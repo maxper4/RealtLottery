@@ -30,13 +30,13 @@ contract RealtLottery is Ownable, ERC721, ERC721Holder {
         rentTokens.push(0x7349C9eaA538e118725a6130e0f8341509b9f8A0);
     }
 
-    function setInterests(address[] memory tokens, uint256[] memory interests) public onlyOwner {
+    function setInterests(address[] memory tokens, uint256[] memory interests) external onlyOwner {
         for (uint256 i = 0; i < tokens.length; i++) {
             interestsPerToken[tokens[i]] = interests[i];
         }
     }
 
-    function enter(address[] memory tokens, uint256[] memory ids) public {
+    function enter(address[] memory tokens, uint256[] memory ids) external {
         for (uint256 i = 0; i < tokens.length; i++) {
             if(interestsPerToken[tokens[i]] > 0) {
                 ERC721(tokens[i]).transferFrom(msg.sender, address(this), ids[i]);  // Take custody of the property token
@@ -48,7 +48,7 @@ contract RealtLottery is Ownable, ERC721, ERC721Holder {
         }
     }
 
-    function exit(uint256[] memory ids) public {
+    function exit(uint256[] memory ids) external {
         for (uint256 i = 0; i < ids.length; i++) {
             if(ownerOf(ids[i]) == msg.sender) {
                 Ticket memory ticket = tickets[ids[i]];
@@ -63,7 +63,7 @@ contract RealtLottery is Ownable, ERC721, ERC721Holder {
         }
     }
 
-    function draw() public {
+    function draw() external {
         uint256 ticketWinner = uint256(keccak256(abi.encodePacked(block.timestamp, msg.sender))) % ticketCounter; // TODO: improve randomness, add probability, skip burned ids
         address winner = ownerOf(ticketWinner);
 
