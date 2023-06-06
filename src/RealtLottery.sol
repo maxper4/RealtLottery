@@ -31,13 +31,17 @@ contract RealtLottery is Ownable, ERC721, ERC721Holder {
     }
 
     function setInterests(address[] memory tokens, uint256[] memory interests) external onlyOwner {
-        for (uint256 i = 0; i < tokens.length; i++) {
+        for (uint256 i = 0; i < tokens.length;) {
             interestsPerToken[tokens[i]] = interests[i];
+
+            unchecked {
+                ++i;
+            }
         }
     }
 
     function enter(address[] memory tokens, uint256[] memory ids) external {
-        for (uint256 i = 0; i < tokens.length; i++) {
+        for (uint256 i = 0; i < tokens.length;) {
             if(interestsPerToken[tokens[i]] > 0) {
                 ERC721(tokens[i]).transferFrom(msg.sender, address(this), ids[i]);  // Take custody of the property token
 
@@ -45,11 +49,15 @@ contract RealtLottery is Ownable, ERC721, ERC721Holder {
                 tickets[ticketCounter] = Ticket(tokens[i], ids[i], block.timestamp);
                 _safeMint(msg.sender, ticketCounter++);
             }
+
+            unchecked {
+                ++i;
+            }
         }
     }
 
     function exit(uint256[] memory ids) external {
-        for (uint256 i = 0; i < ids.length; i++) {
+        for (uint256 i = 0; i < ids.length;) {
             if(ownerOf(ids[i]) == msg.sender) {
                 Ticket memory ticket = tickets[ids[i]];
                 
@@ -60,6 +68,10 @@ contract RealtLottery is Ownable, ERC721, ERC721Holder {
                 // Send back the property token
                 ERC721(ticket.token).transferFrom(address(this), msg.sender, ticket.id);
             }
+
+            unchecked {
+                ++i;
+            }
         }
     }
 
@@ -69,9 +81,15 @@ contract RealtLottery is Ownable, ERC721, ERC721Holder {
 
         // TODO require winner to be a renter (check if the token was stacked before the last reception of the last rent)
 
-        for(uint256 i = 0; i < rentTokens.length; i++) {    // Transfer rent tokens
+        // TODO check one week passed since last rent
+
+        for(uint256 i = 0; i < rentTokens.length;) {    // Transfer rent tokens
             uint256 reward = IERC20(rentTokens[i]).balanceOf(address(this));
             IERC20(rentTokens[i]).transferFrom(address(this), winner, reward);
+
+            unchecked {
+                ++i;
+            }
         }
 
         payable(winner).transfer(address(this).balance);        // Transfer xDai
