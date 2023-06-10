@@ -23,7 +23,9 @@ contract RealtLotteryTest is Test, ERC721Holder {
         interests[0] = 10;
         interests[1] = 5;
 
-        lottery = new RealtLottery(tokens, interests);
+        address[] memory rentTokens = new address[](0);
+
+        lottery = new RealtLottery(tokens, interests, rentTokens, block.timestamp - 1);
 
         tokenA.setApprovalForAll(address(lottery), true);
         tokenB.setApprovalForAll(address(lottery), true);
@@ -73,5 +75,22 @@ contract RealtLotteryTest is Test, ERC721Holder {
         assertEq(tokenB.ownerOf(1), address(this));
         assertEq(lottery.balanceOf(address(this)), 0);
         assertEq(lottery.balanceOf(address(lottery)), 0);
+    }
+
+    function testDrawDelay() public {
+        tokenA.mint(address(this), 1);
+        address[] memory tokens = new address[](2);
+        tokens[0] = address(tokenA);
+         uint256[] memory ids = new uint256[](2);
+        ids[0] = 1;
+        lottery.enter(tokens, ids);
+
+        lottery.draw();
+
+        assertEq(lottery.nextDrawTimestamp(), block.timestamp + lottery.drawInterval());
+
+        // try to draw again
+        vm.expectRevert(DrawTooEarly.selector);
+        lottery.draw();
     }
 }

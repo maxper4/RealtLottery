@@ -6,7 +6,7 @@ import "openzeppelin/token/ERC721/ERC721.sol";
 import "openzeppelin/token/ERC20/IERC20.sol";
 import "openzeppelin/token/ERC721/utils/ERC721Holder.sol";
 
-error DrawTooEarly(uint256 nextDrawTimestamp);
+error DrawTooEarly();
 
 contract RealtLottery is Ownable, ERC721, ERC721Holder {
     struct Ticket {
@@ -25,15 +25,12 @@ contract RealtLottery is Ownable, ERC721, ERC721Holder {
     uint256 public nextDrawTimestamp;                                  // when the next draw can be done 
     uint256 public drawInterval;                                       // how often a draw can be done
     
-    constructor(address[] memory tokens, uint256[] memory interests, uint256 nextDraw) ERC721("RealtLottery", "RTL") Ownable() {
+    constructor(address[] memory tokens, uint256[] memory interests, address[] memory _rentTokens, uint256 nextDraw) ERC721("RealtLottery", "RTL") Ownable() {
         for (uint256 i = 0; i < tokens.length; i++) {
             interestsPerToken[tokens[i]] = interests[i];
         }
 
-        rentTokens = new address[](0);
-        rentTokens.push(0xDDAfbb505ad214D7b80b1f830fcCc89B60fb7A83);
-        rentTokens.push(0x7349C9eaA538e118725a6130e0f8341509b9f8A0);
-
+        rentTokens = _rentTokens;
         nextDrawTimestamp = nextDraw;
         drawInterval = 6 days + 12 hours;
     }
@@ -79,7 +76,7 @@ contract RealtLottery is Ownable, ERC721, ERC721Holder {
         address winner = ownerOf(ticketWinner);
 
         if(block.timestamp < nextDrawTimestamp) {
-            revert DrawTooEarly(nextDrawTimestamp);
+            revert DrawTooEarly();
         }
         
         nextDrawTimestamp = block.timestamp + drawInterval;
@@ -95,7 +92,7 @@ contract RealtLottery is Ownable, ERC721, ERC721Holder {
             }
         }
 
-        payable(winner).transfer(address(this).balance);        // Transfer xDai
+        winner.call{value: address(this).balance}(""); // Transfer xDai, if this fail then the next winner will have a double prize !
     }
 
     function setInterests(address[] memory tokens, uint256[] memory interests) external onlyOwner {
@@ -110,5 +107,9 @@ contract RealtLottery is Ownable, ERC721, ERC721Holder {
 
     function setDrawInterval(uint256 interval) external onlyOwner {
         drawInterval = interval;
+    }
+
+    function setRentTokens(address[] memory _rentTokens) external onlyOwner {
+        rentTokens = _rentTokens;
     }
 }
