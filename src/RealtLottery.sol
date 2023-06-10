@@ -6,6 +6,8 @@ import "openzeppelin/token/ERC721/ERC721.sol";
 import "openzeppelin/token/ERC20/IERC20.sol";
 import "openzeppelin/token/ERC721/utils/ERC721Holder.sol";
 
+error DrawTooEarly(uint256 nextDrawTimestamp);
+
 contract RealtLottery is Ownable, ERC721, ERC721Holder {
     struct Ticket {
         address token;
@@ -19,8 +21,11 @@ contract RealtLottery is Ownable, ERC721, ERC721Holder {
     uint256 private ticketCounter;
 
     address[] public rentTokens;
+
+    uint256 public nextDrawTimestamp;                                  // when the next draw can be done 
+    uint256 public drawInterval;                                       // how often a draw can be done
     
-    constructor(address[] memory tokens, uint256[] memory interests) ERC721("RealtLottery", "RTL") Ownable() {
+    constructor(address[] memory tokens, uint256[] memory interests, uint256 nextDraw) ERC721("RealtLottery", "RTL") Ownable() {
         for (uint256 i = 0; i < tokens.length; i++) {
             interestsPerToken[tokens[i]] = interests[i];
         }
@@ -28,22 +33,16 @@ contract RealtLottery is Ownable, ERC721, ERC721Holder {
         rentTokens = new address[](0);
         rentTokens.push(0xDDAfbb505ad214D7b80b1f830fcCc89B60fb7A83);
         rentTokens.push(0x7349C9eaA538e118725a6130e0f8341509b9f8A0);
-    }
 
-    function setInterests(address[] memory tokens, uint256[] memory interests) external onlyOwner {
-        for (uint256 i = 0; i < tokens.length;) {
-            interestsPerToken[tokens[i]] = interests[i];
-
-            unchecked {
-                ++i;
-            }
-        }
+        nextDrawTimestamp = nextDraw;
+        drawInterval = 6 days + 12 hours;
     }
 
     function enter(address[] memory tokens, uint256[] memory ids) external {
         for (uint256 i = 0; i < tokens.length;) {
             if(interestsPerToken[tokens[i]] > 0) {
-                ERC721(tokens[i]).transferFrom(msg.sender, address(this), ids[i]);  // Take custody of the property token
+                // owner must approve this contract first
+                ERC721(tokens[i]).transferFrom(msg.sender, address(this), ids[i]);  // Take custody of the property token, 
 
                 // Mint a ticket to be reedemed later for the property token
                 tickets[ticketCounter] = Ticket(tokens[i], ids[i], block.timestamp);
@@ -79,9 +78,13 @@ contract RealtLottery is Ownable, ERC721, ERC721Holder {
         uint256 ticketWinner = uint256(keccak256(abi.encodePacked(block.timestamp, msg.sender))) % ticketCounter; // TODO: improve randomness, add probability, skip burned ids
         address winner = ownerOf(ticketWinner);
 
-        // TODO require winner to be a renter (check if the token was stacked before the last reception of the last rent)
+        if(block.timestamp < nextDrawTimestamp) {
+            revert DrawTooEarly(nextDrawTimestamp);
+        }
+        
+        nextDrawTimestamp = block.timestamp + drawInterval;
 
-        // TODO check one week passed since last rent
+        // TODO require winner to be a renter (check if the token was stacked before the last reception of the last rent)
 
         for(uint256 i = 0; i < rentTokens.length;) {    // Transfer rent tokens
             uint256 reward = IERC20(rentTokens[i]).balanceOf(address(this));
@@ -93,5 +96,19 @@ contract RealtLottery is Ownable, ERC721, ERC721Holder {
         }
 
         payable(winner).transfer(address(this).balance);        // Transfer xDai
+    }
+
+    function setInterests(address[] memory tokens, uint256[] memory interests) external onlyOwner {
+        for (uint256 i = 0; i < tokens.length;) {
+            interestsPerToken[tokens[i]] = interests[i];
+
+            unchecked {
+                ++i;
+            }
+        }
+    }
+
+    function setDrawInterval(uint256 interval) external onlyOwner {
+        drawInterval = interval;
     }
 }
