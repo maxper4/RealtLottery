@@ -93,4 +93,34 @@ contract RealtLotteryTest is Test, ERC721Holder {
         vm.expectRevert(DrawTooEarly.selector);
         lottery.draw();
     }
+
+    function testSelectionOfNFTBasedOnRandomness() public {
+        tokenA.mint(address(this), 1);
+        tokenB.mint(address(this), 1);
+
+        address[] memory tokens = new address[](2);
+        tokens[0] = address(tokenA);
+        tokens[1] = address(tokenB);
+
+        uint256[] memory ids = new uint256[](2);
+        ids[0] = 1;
+        ids[1] = 1;
+
+        lottery.enter(tokens, ids);
+
+        uint256 winner0 = lottery.findRandomNFT(0);
+        assertEq(winner0, 0);
+
+        uint256 winner1 = lottery.findRandomNFT(1);
+        assertEq(winner1, 0);
+
+        uint256 winner2 = lottery.findRandomNFT(10);
+        assertEq(winner2, 0);
+
+        uint256 winner3 = lottery.findRandomNFT(11);
+        assertEq(winner3, 1);
+
+        uint256 winner4 = lottery.findRandomNFT(15);
+        assertEq(winner4, 1);
+    }
 }

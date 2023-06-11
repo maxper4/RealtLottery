@@ -17,6 +17,7 @@ contract RealtLottery is Ownable, ERC721, ERC721Holder {
 
     mapping(address => uint256) public interestsPerToken;
     mapping(uint256 => Ticket) public tickets;
+    uint256[] public interestsCumulated;                               // cumulative sum of interestsPerToken TODO: find a better way because this is not updatable if the interests of one token change
 
     uint256 private ticketCounter;
 
@@ -39,10 +40,11 @@ contract RealtLottery is Ownable, ERC721, ERC721Holder {
         for (uint256 i = 0; i < tokens.length;) {
             if(interestsPerToken[tokens[i]] > 0) {
                 // owner must approve this contract first
-                ERC721(tokens[i]).transferFrom(msg.sender, address(this), ids[i]);  // Take custody of the property token, 
+                ERC721(tokens[i]).transferFrom(msg.sender, address(this), ids[i]);  // Take custody of the property token
 
                 // Mint a ticket to be reedemed later for the property token
                 tickets[ticketCounter] = Ticket(tokens[i], ids[i], block.timestamp);
+                interestsCumulated.push(interestsCumulated.length == 0 ? interestsPerToken[tokens[i]] : interestsCumulated[interestsCumulated.length - 1] + interestsPerToken[tokens[i]]);
                 _safeMint(msg.sender, ticketCounter++);
             }
 
@@ -61,6 +63,8 @@ contract RealtLottery is Ownable, ERC721, ERC721Holder {
                 _burn(ids[i]);
                 delete tickets[ids[i]];
 
+                // TODO handle interests cumulated
+
                 // Send back the property token
                 ERC721(ticket.token).transferFrom(address(this), msg.sender, ticket.id);
             }
@@ -72,7 +76,8 @@ contract RealtLottery is Ownable, ERC721, ERC721Holder {
     }
 
     function draw() external {
-        uint256 ticketWinner = uint256(keccak256(abi.encodePacked(block.timestamp, msg.sender))) % ticketCounter; // TODO: improve randomness, add probability, skip burned ids
+        uint256 randomness = uint256(keccak256(abi.encodePacked(block.timestamp, msg.sender))) % interestsCumulated[ticketCounter - 1]; // TODO: improve randomness, skip burned ids
+        uint256 ticketWinner = findRandomNFT(randomness);
         address winner = ownerOf(ticketWinner);
 
         if(block.timestamp < nextDrawTimestamp) {
@@ -93,6 +98,29 @@ contract RealtLottery is Ownable, ERC721, ERC721Holder {
         }
 
         winner.call{value: address(this).balance}(""); // Transfer xDai, if this fail then the next winner will have a double prize !
+    }
+
+    function findRandomNFT(uint256 randomness) public view returns(uint256) {
+        uint256 indexMin = 0;
+        uint256 indexMax = ticketCounter - 1;
+        uint256 index = indexMax / 2;
+
+        while(indexMin <= indexMax) {
+            if(interestsCumulated[index] >= randomness && (index == 0 || interestsCumulated[index - 1] < randomness)){
+                return index;
+            }
+            else{
+                if(interestsCumulated[index] < randomness){
+                    indexMin = index + 1;
+                }
+                else{
+                    indexMax = index - 1;
+                }
+                index = (indexMin + indexMax) / 2;
+            }
+        }
+
+        return ticketCounter - 1;
     }
 
     function setInterests(address[] memory tokens, uint256[] memory interests) external onlyOwner {
