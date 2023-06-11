@@ -12,12 +12,20 @@ contract RealtLottery is Ownable, ERC721, ERC721Holder {
     struct Ticket {
         address token;
         uint256 id;
+        uint256 indexInToken;
         uint256 enteredAt;
     }
 
-    mapping(address => uint256) public interestsPerToken;
+    struct Token {
+        uint256 interests;
+        uint256[] tickets;
+    }
+
+    Token[] public tokens;
+    mapping(address => uint256) public indexOfTokens;
+
     mapping(uint256 => Ticket) public tickets;
-    uint256[] public interestsCumulated;                               // cumulative sum of interestsPerToken TODO: find a better way because this is not updatable if the interests of one token change
+    uint256 public interestsCumulated;
 
     uint256 private ticketCounter;
 
@@ -26,9 +34,10 @@ contract RealtLottery is Ownable, ERC721, ERC721Holder {
     uint256 public nextDrawTimestamp;                                  // when the next draw can be done 
     uint256 public drawInterval;                                       // how often a draw can be done
     
-    constructor(address[] memory tokens, uint256[] memory interests, address[] memory _rentTokens, uint256 nextDraw) ERC721("RealtLottery", "RTL") Ownable() {
-        for (uint256 i = 0; i < tokens.length; i++) {
-            interestsPerToken[tokens[i]] = interests[i];
+    constructor(address[] memory _tokens, uint256[] memory interests, address[] memory _rentTokens, uint256 nextDraw) ERC721("RealtLottery", "RTL") Ownable() {
+        for (uint256 i = 0; i < _tokens.length; ++i) {
+            tokens.push(Token(interests[i], new uint256[](0)));
+            indexOfTokens[_tokens[i]] = i;
         }
 
         rentTokens = _rentTokens;
@@ -36,16 +45,21 @@ contract RealtLottery is Ownable, ERC721, ERC721Holder {
         drawInterval = 6 days + 12 hours;
     }
 
-    function enter(address[] memory tokens, uint256[] memory ids) external {
-        for (uint256 i = 0; i < tokens.length;) {
-            if(interestsPerToken[tokens[i]] > 0) {
-                // owner must approve this contract first
-                ERC721(tokens[i]).transferFrom(msg.sender, address(this), ids[i]);  // Take custody of the property token
+    function enter(address[] memory _tokens, uint256[][] memory ids) external {
+        for (uint256 i = 0; i < _tokens.length;) {
+            if(tokens[indexOfTokens[_tokens[i]]].interests != 0) {
+                for (uint256 indexToken = 0; indexToken < ids[i].length; ++indexToken) {
+                     // owner must approve this contract first
+                    ERC721(_tokens[i]).transferFrom(msg.sender, address(this), ids[i][indexToken]);  // Take custody of the property token
 
-                // Mint a ticket to be reedemed later for the property token
-                tickets[ticketCounter] = Ticket(tokens[i], ids[i], block.timestamp);
-                interestsCumulated.push(interestsCumulated.length == 0 ? interestsPerToken[tokens[i]] : interestsCumulated[interestsCumulated.length - 1] + interestsPerToken[tokens[i]]);
-                _safeMint(msg.sender, ticketCounter++);
+                    // Mint a ticket to be reedemed later for the property token
+                    tickets[ticketCounter] = Ticket(_tokens[i], ids[i][indexToken], tokens[indexOfTokens[_tokens[i]]].tickets.length, block.timestamp);
+                    tokens[indexOfTokens[_tokens[i]]].tickets.push(ticketCounter);
+                    interestsCumulated += tokens[indexOfTokens[_tokens[i]]].interests;
+
+                    _safeMint(msg.sender, ticketCounter++);
+                }
+               
             }
 
             unchecked {
@@ -63,7 +77,12 @@ contract RealtLottery is Ownable, ERC721, ERC721Holder {
                 _burn(ids[i]);
                 delete tickets[ids[i]];
 
-                // TODO handle interests cumulated
+                uint256 swapped = tokens[indexOfTokens[ticket.token]].tickets[tokens[indexOfTokens[ticket.token]].tickets.length - 1];
+                tickets[swapped].indexInToken = ticket.indexInToken;
+                tokens[indexOfTokens[ticket.token]].tickets[ticket.indexInToken] = swapped;
+                tokens[indexOfTokens[ticket.token]].tickets.pop();
+
+                interestsCumulated -= tokens[indexOfTokens[ticket.token]].interests;
 
                 // Send back the property token
                 ERC721(ticket.token).transferFrom(address(this), msg.sender, ticket.id);
@@ -73,10 +92,10 @@ contract RealtLottery is Ownable, ERC721, ERC721Holder {
                 ++i;
             }
         }
-    }
+    } 
 
     function draw() external {
-        uint256 randomness = uint256(keccak256(abi.encodePacked(block.timestamp, msg.sender))) % interestsCumulated[ticketCounter - 1]; // TODO: improve randomness, skip burned ids
+        uint256 randomness = uint256(keccak256(abi.encodePacked(block.timestamp, msg.sender))) % interestsCumulated; // TODO: improve randomness
         uint256 ticketWinner = findRandomNFT(randomness);
         address winner = ownerOf(ticketWinner);
 
@@ -101,31 +120,22 @@ contract RealtLottery is Ownable, ERC721, ERC721Holder {
     }
 
     function findRandomNFT(uint256 randomness) public view returns(uint256) {
-        uint256 indexMin = 0;
-        uint256 indexMax = ticketCounter - 1;
-        uint256 index = indexMax / 2;
+        for(uint256 i = 0; i < tokens.length; ++i) {
+            Token memory token = tokens[i];
+            uint256 maxWeightToken = token.tickets.length * token.interests;
+            if(randomness < maxWeightToken) {
+                return token.tickets[randomness /= token.interests];
+            }
 
-        while(indexMin <= indexMax) {
-            if(interestsCumulated[index] >= randomness && (index == 0 || interestsCumulated[index - 1] < randomness)){
-                return index;
-            }
-            else{
-                if(interestsCumulated[index] < randomness){
-                    indexMin = index + 1;
-                }
-                else{
-                    indexMax = index - 1;
-                }
-                index = (indexMin + indexMax) / 2;
-            }
+            randomness -= maxWeightToken;
         }
 
-        return ticketCounter - 1;
+        return tokens[tokens.length - 1].tickets[tokens[tokens.length - 1].tickets.length - 1];
     }
 
-    function setInterests(address[] memory tokens, uint256[] memory interests) external onlyOwner {
-        for (uint256 i = 0; i < tokens.length;) {
-            interestsPerToken[tokens[i]] = interests[i];
+    function setInterests(address[] memory _tokens, uint256[] memory interests) external onlyOwner {
+        for (uint256 i = 0; i < _tokens.length;) {
+            tokens[indexOfTokens[_tokens[i]]].interests = interests[i];
 
             unchecked {
                 ++i;

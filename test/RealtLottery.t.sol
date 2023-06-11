@@ -39,9 +39,11 @@ contract RealtLotteryTest is Test, ERC721Holder {
         tokens[0] = address(tokenA);
         tokens[1] = address(tokenB);
 
-        uint256[] memory ids = new uint256[](2);
-        ids[0] = 1;
-        ids[1] = 1;
+        uint256[][] memory ids = new uint256[][](2);
+        uint256[] memory id = new uint256[](1);
+        id[0] = 1;
+        ids[0] = id;
+        ids[1] = id;
 
         lottery.enter(tokens, ids);
 
@@ -59,9 +61,11 @@ contract RealtLotteryTest is Test, ERC721Holder {
         tokens[0] = address(tokenA);
         tokens[1] = address(tokenB);
 
-        uint256[] memory ids = new uint256[](2);
-        ids[0] = 1;
-        ids[1] = 1;
+        uint256[][] memory ids = new uint256[][](2);
+        uint256[] memory id = new uint256[](1);
+        id[0] = 1;
+        ids[0] = id;
+        ids[1] = id;
 
         lottery.enter(tokens, ids);
 
@@ -79,10 +83,14 @@ contract RealtLotteryTest is Test, ERC721Holder {
 
     function testDrawDelay() public {
         tokenA.mint(address(this), 1);
-        address[] memory tokens = new address[](2);
+        address[] memory tokens = new address[](1);
         tokens[0] = address(tokenA);
-         uint256[] memory ids = new uint256[](2);
-        ids[0] = 1;
+
+        uint256[][] memory ids = new uint256[][](1);
+        uint256[] memory id = new uint256[](1);
+        id[0] = 1;
+        ids[0] = id;
+
         lottery.enter(tokens, ids);
 
         lottery.draw();
@@ -94,7 +102,7 @@ contract RealtLotteryTest is Test, ERC721Holder {
         lottery.draw();
     }
 
-    function testSelectionOfNFTBasedOnRandomness() public {
+    function testSelectionOfNFTBasedOnRandomness2() public {
         tokenA.mint(address(this), 1);
         tokenB.mint(address(this), 1);
 
@@ -102,9 +110,11 @@ contract RealtLotteryTest is Test, ERC721Holder {
         tokens[0] = address(tokenA);
         tokens[1] = address(tokenB);
 
-        uint256[] memory ids = new uint256[](2);
-        ids[0] = 1;
-        ids[1] = 1;
+        uint256[][] memory ids = new uint256[][](2);
+        uint256[] memory id = new uint256[](1);
+        id[0] = 1;
+        ids[0] = id;
+        ids[1] = id;
 
         lottery.enter(tokens, ids);
 
@@ -115,12 +125,100 @@ contract RealtLotteryTest is Test, ERC721Holder {
         assertEq(winner1, 0);
 
         uint256 winner2 = lottery.findRandomNFT(10);
-        assertEq(winner2, 0);
+        assertEq(winner2, 1);
 
         uint256 winner3 = lottery.findRandomNFT(11);
         assertEq(winner3, 1);
 
         uint256 winner4 = lottery.findRandomNFT(15);
         assertEq(winner4, 1);
+    }
+
+    function testSelectionOfNFTBasedOnRandomness3() public {
+        tokenA.mint(address(this), 1);
+        tokenA.mint(address(this), 2);
+        tokenB.mint(address(this), 1);
+
+        address[] memory tokens = new address[](2);
+        tokens[0] = address(tokenA);
+        tokens[1] = address(tokenB);
+
+        uint256[][] memory ids = new uint256[][](2);
+        uint256[] memory id = new uint256[](2);
+        id[0] = 1;
+        id[1] = 2;
+        uint256[] memory id2 = new uint256[](1);
+        id2[0] = 1;
+
+        ids[0] = id;
+        ids[1] = id2;
+
+        lottery.enter(tokens, ids);
+
+        uint256 winner0 = lottery.findRandomNFT(0);
+        assertEq(winner0, 0);
+
+        uint256 winner1 = lottery.findRandomNFT(1);
+        assertEq(winner1, 0);
+
+        uint256 winner2 = lottery.findRandomNFT(10);
+        assertEq(winner2, 1);
+
+        uint256 winner3 = lottery.findRandomNFT(11);
+        assertEq(winner3, 1);
+
+        uint256 winner4 = lottery.findRandomNFT(15);
+        assertEq(winner4, 1);
+
+        uint256 winner5 = lottery.findRandomNFT(19);
+        assertEq(winner5, 1);
+
+        uint256 winner6 = lottery.findRandomNFT(20);
+        assertEq(winner6, 2);
+
+        uint256 winner7 = lottery.findRandomNFT(24);
+        assertEq(winner7, 2);
+    }
+
+    function testSelectionOfNFTBasedOnRandomnessAfterBurn() public {
+        tokenA.mint(address(this), 1);
+        tokenA.mint(address(this), 2);
+        tokenB.mint(address(this), 1);
+
+        address[] memory tokens = new address[](2);
+        tokens[0] = address(tokenA);
+        tokens[1] = address(tokenB);
+
+        uint256[][] memory ids = new uint256[][](2);
+        uint256[] memory id = new uint256[](2);
+        id[0] = 1;
+        id[1] = 2;
+        uint256[] memory id2 = new uint256[](1);
+        id2[0] = 1;
+
+        ids[0] = id;
+        ids[1] = id2;
+
+        lottery.enter(tokens, ids);
+
+        uint256[] memory toBurn = new uint256[](1);
+        toBurn[0] = 1;
+
+        lottery.exit(toBurn);
+
+        uint256 winner0 = lottery.findRandomNFT(0);
+        assertEq(winner0, 0);
+
+        uint256 winner1 = lottery.findRandomNFT(1);
+        assertEq(winner1, 0);
+
+        uint256 winner2 = lottery.findRandomNFT(9);
+        assertEq(winner2, 0);
+
+        uint256 winner3 = lottery.findRandomNFT(10);
+        assertEq(winner3, 2);
+
+        uint256 winner4 = lottery.findRandomNFT(15);
+        assertEq(winner4, 2);
     }
 }
