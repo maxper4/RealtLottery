@@ -11,8 +11,11 @@ error TokenNotSupported(address token);
 error TicketNotReady(uint256 ticket);
 error NotTicketOwner(uint256 ticket);
 
+/// @title RealT Lottery: a lottery where you can win the rent of every staked property
+/// @author maxper
+/// @notice  Users can enter with a token from RealT, stack it and wait for the next draw
 contract RealtLottery is Ownable, ERC721, ERC721Holder {
-    struct Ticket {
+    struct Ticket {                                                     // A ticket is a wrapper around a property token
         address token;
         uint256 id;
         uint256 indexInToken;
@@ -20,23 +23,23 @@ contract RealtLottery is Ownable, ERC721, ERC721Holder {
         bool stacked;
     }
 
-    struct Token {
+    struct Token {                                                      // A token represent a property that generate interests
         uint256 interests;
         uint256[] tickets;
     }
 
-    address[] public tokensSupported;
-    mapping(address => Token) public tokens;
+    address[] public tokensSupported;                                   // list of supported property tokens
+    mapping(address => Token) public tokens;                            // all tokens
 
-    mapping(uint256 => Ticket) public tickets;
+    mapping(uint256 => Ticket) public tickets;                          // all tickets
     uint256 public interestsCumulated;
 
-    uint256 private ticketCounter;
+    uint256 private ticketCounter;                                      // counter for ticket ids
 
-    address[] public rentTokens;
+    address[] public rentTokens;                                        // every token that can be used to pay rent (xDai, USDC, etc..)
 
     uint256 public nextDrawTimestamp;                                  // when the next draw can be done 
-    uint256 public drawInterval;                                       // how often a draw can be done
+    uint256 public drawInterval;                                       // minimum delay between two draws
     
     constructor(address[] memory _tokens, uint256[] memory _interests, address[] memory _rentTokens, uint256 _nextDraw) ERC721("RealtLottery", "RTL") Ownable() {
         for (uint256 i = 0; i < _tokens.length; ++i) {
@@ -49,6 +52,9 @@ contract RealtLottery is Ownable, ERC721, ERC721Holder {
         drawInterval = 6 days + 12 hours;
     }
 
+    /// @notice Enter the lottery with a list of property tokens
+    /// @param _tokens The list of property tokens
+    /// @param _ids  Each id in each property token
     function enter(address[] memory _tokens, uint256[][] memory _ids) external {
         for (uint256 i = 0; i < _tokens.length;) {
             if(tokens[_tokens[i]].interests != 0) {
@@ -72,6 +78,9 @@ contract RealtLottery is Ownable, ERC721, ERC721Holder {
         }
     }
 
+    /// @notice Stack a list of tickets
+    /// @param _tickets The list of tickets
+    /// @dev The ticket must have been entered at least one drawInterval ago to avoid abuse (being able to win without having contributed to the rent)
     function stack(uint256[] memory _tickets) external {
         for (uint256 i = 0; i < _tickets.length;) {
             if(ownerOf(_tickets[i]) == msg.sender) {
@@ -98,6 +107,8 @@ contract RealtLottery is Ownable, ERC721, ERC721Holder {
         }
     }
 
+    /// @notice Exit a list of tickets, the property token will be sent back to the user
+    /// @param _ids The list of tickets
     function exit(uint256[] memory _ids) external {
         for (uint256 i = 0; i < _ids.length;) {
             if(ownerOf(_ids[i]) == msg.sender) {
@@ -128,6 +139,7 @@ contract RealtLottery is Ownable, ERC721, ERC721Holder {
         }
     } 
 
+    /// @notice Draw a winner and send him the rent of every stacked property token
     function draw() external {
         if(block.timestamp < nextDrawTimestamp) {
             revert DrawTooEarly();
@@ -152,6 +164,7 @@ contract RealtLottery is Ownable, ERC721, ERC721Holder {
         winner.call{value: address(this).balance}(""); // Transfer xDai, if this fail then the next winner will have a double prize !
     }
 
+    /// @notice Find the winner according to the randomness
     function findRandomNFT(uint256 _randomness) public view returns(uint256) {
         for(uint256 i = 0; i < tokensSupported.length; ++i) {
             Token memory token = tokens[tokensSupported[i]];
@@ -168,6 +181,9 @@ contract RealtLottery is Ownable, ERC721, ERC721Holder {
         return tokens[tokensSupported[tokensSupported.length - 1]].tickets[tokens[tokensSupported[tokensSupported.length - 1]].tickets.length - 1];
     }
 
+    /// @notice Update the interests of a list of property tokens
+    /// @param _tokens The list of property tokens
+    /// @param _interests The list of interests
     function setInterests(address[] memory _tokens, uint256[] memory _interests) external onlyOwner {
         for (uint256 i = 0; i < _tokens.length;) {
             tokens[_tokens[i]].interests = _interests[i];
@@ -178,6 +194,9 @@ contract RealtLottery is Ownable, ERC721, ERC721Holder {
         }
     }
 
+    /// @notice Add a list of property tokens
+    /// @param _tokens The list of property tokens
+    /// @param _interests The list of interests
     function addTokens(address[] memory _tokens, uint256[] memory _interests) external onlyOwner {
         for (uint256 i = 0; i < _tokens.length;) {
             tokens[_tokens[i]] = Token(_interests[i], new uint256[](0));
@@ -189,10 +208,14 @@ contract RealtLottery is Ownable, ERC721, ERC721Holder {
         }
     }
 
+    /// @notice Set the draw interval
+    /// @param _interval The new draw interval
     function setDrawInterval(uint256 _interval) external onlyOwner {
         drawInterval = _interval;
     }
 
+    /// @notice Set the rent tokens
+    /// @param _rentTokens The new rent tokens
     function setRentTokens(address[] memory _rentTokens) external onlyOwner {
         rentTokens = _rentTokens;
     }
