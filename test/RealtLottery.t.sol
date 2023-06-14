@@ -92,6 +92,10 @@ contract RealtLotteryTest is Test, ERC721Holder {
         ids[0] = id;
 
         lottery.enter(tokens, ids);
+        skip(lottery.drawInterval() + 1);
+        uint256[] memory tickets = new uint256[](1);
+        tickets[0] = 0;
+        lottery.stack(tickets);
 
         lottery.draw();
 
@@ -117,6 +121,12 @@ contract RealtLotteryTest is Test, ERC721Holder {
         ids[1] = id;
 
         lottery.enter(tokens, ids);
+        skip(lottery.drawInterval() + 1);
+        uint256[] memory tickets = new uint256[](2);
+        tickets[0] = 0;
+        tickets[1] = 1;
+        lottery.stack(tickets);
+
 
         uint256 winner0 = lottery.findRandomNFT(0);
         assertEq(winner0, 0);
@@ -154,6 +164,13 @@ contract RealtLotteryTest is Test, ERC721Holder {
         ids[1] = id2;
 
         lottery.enter(tokens, ids);
+        skip(lottery.drawInterval() + 1);
+        uint256[] memory tickets = new uint256[](3);
+        tickets[0] = 0;
+        tickets[1] = 1;
+        tickets[2] = 2;
+        lottery.stack(tickets);
+
 
         uint256 winner0 = lottery.findRandomNFT(0);
         assertEq(winner0, 0);
@@ -200,6 +217,12 @@ contract RealtLotteryTest is Test, ERC721Holder {
         ids[1] = id2;
 
         lottery.enter(tokens, ids);
+        skip(lottery.drawInterval() + 1);
+        uint256[] memory tickets = new uint256[](3);
+        tickets[0] = 0;
+        tickets[1] = 1;
+        tickets[2] = 2;
+        lottery.stack(tickets);
 
         uint256[] memory toBurn = new uint256[](1);
         toBurn[0] = 1;
@@ -220,5 +243,215 @@ contract RealtLotteryTest is Test, ERC721Holder {
 
         uint256 winner4 = lottery.findRandomNFT(15);
         assertEq(winner4, 2);
+    }
+
+    function testOnlyStackedCanWin(uint256 randomness) public {
+        tokenA.mint(address(this), 1);
+        tokenB.mint(address(this), 1);
+
+        address[] memory tokens = new address[](2);
+        tokens[0] = address(tokenA);
+        tokens[1] = address(tokenB);
+
+        uint256[][] memory ids = new uint256[][](2);
+        uint256[] memory id = new uint256[](1);
+        id[0] = 1;
+        uint256[] memory id2 = new uint256[](1);
+        id2[0] = 1;
+
+        ids[0] = id;
+        ids[1] = id2;
+
+        lottery.enter(tokens, ids);
+        skip(lottery.drawInterval() + 1);
+        uint256[] memory tickets = new uint256[](1);
+        tickets[0] = 0;
+        lottery.stack(tickets);
+
+        uint256 winner0 = lottery.findRandomNFT(randomness % lottery.interestsCumulated());
+        assertEq(winner0, 0);
+    }
+
+    function testCantEnterWithUnsupportedToken() public {
+        MockNFT tokenC = new MockNFT("TOKEN C", "TKC");
+        tokenC.mint(address(this), 1);
+
+        address[] memory tokens = new address[](1);
+        tokens[0] = address(tokenC);
+
+        uint256[][] memory ids = new uint256[][](1);
+        uint256[] memory id = new uint256[](1);
+        id[0] = 1;
+        ids[0] = id;
+
+        vm.expectRevert(abi.encodeWithSelector(TokenNotSupported.selector, address(tokenC)));
+        lottery.enter(tokens, ids);
+
+        assertEq(lottery.balanceOf(address(this)), 0);
+    }
+
+    function testCantStackBeforeTheDelay(uint256 _delay) public {
+        vm.assume(_delay < lottery.drawInterval());
+        tokenA.mint(address(this), 1);
+
+        address[] memory tokens = new address[](1);
+        tokens[0] = address(tokenA);
+
+        uint256[][] memory ids = new uint256[][](1);
+        uint256[] memory id = new uint256[](1);
+        id[0] = 1;
+        ids[0] = id;
+
+        lottery.enter(tokens, ids);
+        skip(_delay);
+
+        uint256[] memory tickets = new uint256[](1);
+        tickets[0] = 0;
+
+        vm.expectRevert(abi.encodeWithSelector(TicketNotReady.selector, 0));
+        lottery.stack(tickets);
+
+        assertEq(lottery.balanceOf(address(this)), 1);
+    }
+
+    function testStackSomeoneTicket() public {
+        address someone = address(0x1);
+        tokenA.mint(someone, 1);
+
+        address[] memory tokens = new address[](1);
+        tokens[0] = address(tokenA);
+
+        uint256[][] memory ids = new uint256[][](1);
+        uint256[] memory id = new uint256[](1);
+        id[0] = 1;
+        ids[0] = id;
+
+        vm.prank(someone);
+        tokenA.approve(address(lottery), 1);
+        vm.prank(someone);
+        lottery.enter(tokens, ids);
+        skip(lottery.drawInterval() + 1);
+
+        uint256[] memory tickets = new uint256[](1);
+        tickets[0] = 0;
+
+        vm.expectRevert(abi.encodeWithSelector(NotTicketOwner.selector, 0));
+        lottery.stack(tickets);
+    }
+
+    function testExitSomeoneTicket() public {
+        address someone = address(0x1);
+        tokenA.mint(someone, 1);
+
+        address[] memory tokens = new address[](1);
+        tokens[0] = address(tokenA);
+
+        uint256[][] memory ids = new uint256[][](1);
+        uint256[] memory id = new uint256[](1);
+        id[0] = 1;
+        ids[0] = id;
+
+        vm.prank(someone);
+        tokenA.approve(address(lottery), 1);
+        vm.prank(someone);
+        lottery.enter(tokens, ids);
+        skip(lottery.drawInterval() + 1);
+
+        uint256[] memory tickets = new uint256[](1);
+        tickets[0] = 0;
+
+        vm.prank(someone);
+        lottery.stack(tickets);
+
+        vm.expectRevert(abi.encodeWithSelector(NotTicketOwner.selector, 0));
+        lottery.exit(tickets);
+    }
+
+    function testDraw() public {
+        tokenA.mint(address(this), 1);
+        tokenA.mint(address(this), 2);
+        tokenB.mint(address(this), 1);
+
+        address[] memory tokens = new address[](2);
+        tokens[0] = address(tokenA);
+        tokens[1] = address(tokenB);
+
+        uint256[][] memory ids = new uint256[][](2);
+        uint256[] memory id = new uint256[](2);
+        id[0] = 1;
+        id[1] = 2;
+        uint256[] memory id2 = new uint256[](1);
+        id2[0] = 1;
+
+        ids[0] = id;
+        ids[1] = id2;
+
+        lottery.enter(tokens, ids);
+        skip(lottery.drawInterval() + 1);
+        uint256[] memory tickets = new uint256[](3);
+        tickets[0] = 0;
+        tickets[1] = 1;
+        tickets[2] = 2;
+        lottery.stack(tickets);
+
+        lottery.draw();
+    }
+
+    function testSetInterests() public {
+        address someone = address(0x1);
+
+        address[] memory tokens = new address[](1);
+        tokens[0] = address(tokenA);
+
+        uint256[] memory amount = new uint256[](1);
+        amount[0] = 1;
+
+        vm.expectRevert("Ownable: caller is not the owner");
+        vm.prank(someone);
+        lottery.setInterests(tokens, amount);
+
+        lottery.setInterests(tokens, amount);
+    }
+
+    function testAddTokens() public {
+        address someone = address(0x1);
+
+        address[] memory tokens = new address[](1);
+        tokens[0] = address(tokenA);
+
+        uint256[] memory amount = new uint256[](1);
+        amount[0] = 1;
+
+        vm.expectRevert("Ownable: caller is not the owner");
+        vm.prank(someone);
+        lottery.addTokens(tokens, amount);
+
+        lottery.addTokens(tokens, amount);
+    }
+
+    function testSetDrawInterval() public {
+        address someone = address(0x1);
+
+        vm.expectRevert("Ownable: caller is not the owner");
+        vm.prank(someone);
+        lottery.setDrawInterval(1);
+
+        lottery.setDrawInterval(1);
+        assertEq(lottery.drawInterval(), 1);
+    }
+
+    function setRentTokens() public {
+        address someone = address(0x1);
+
+        address[] memory tokens = new address[](1);
+        tokens[0] = address(tokenA);
+
+        vm.expectRevert("Ownable: caller is not the owner");
+        vm.prank(someone);
+        lottery.setRentTokens(tokens);
+
+        lottery.setRentTokens(tokens);
+
+        assertEq(lottery.rentTokens(0), address(tokenA));
     }
 }
