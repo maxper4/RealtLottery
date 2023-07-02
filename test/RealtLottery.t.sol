@@ -13,6 +13,8 @@ contract RealtLotteryTest is Test, ERC721Holder {
     MockNFT public tokenA;
     MockNFT public tokenB;
 
+    address bob = makeAddr("Bob");
+
     function setUp() public {
         tokenA = new MockNFT("TOKEN A", "TKA");
         tokenB = new MockNFT("TOKEN B", "TKB");
@@ -319,8 +321,7 @@ contract RealtLotteryTest is Test, ERC721Holder {
     }
 
     function testStackSomeoneTicket() public {
-        address someone = address(0x1);
-        tokenA.mint(someone, 1);
+        tokenA.mint(bob, 1);
 
         address[] memory tokens = new address[](1);
         tokens[0] = address(tokenA);
@@ -330,9 +331,9 @@ contract RealtLotteryTest is Test, ERC721Holder {
         id[0] = 1;
         ids[0] = id;
 
-        vm.prank(someone);
+        vm.prank(bob);
         tokenA.approve(address(lottery), 1);
-        vm.prank(someone);
+        vm.prank(bob);
         lottery.enter(tokens, ids);
         skip(lottery.drawInterval() + 1);
 
@@ -344,8 +345,7 @@ contract RealtLotteryTest is Test, ERC721Holder {
     }
 
     function testExitSomeoneTicket() public {
-        address someone = address(0x1);
-        tokenA.mint(someone, 1);
+        tokenA.mint(bob, 1);
 
         address[] memory tokens = new address[](1);
         tokens[0] = address(tokenA);
@@ -355,16 +355,16 @@ contract RealtLotteryTest is Test, ERC721Holder {
         id[0] = 1;
         ids[0] = id;
 
-        vm.prank(someone);
+        vm.prank(bob);
         tokenA.approve(address(lottery), 1);
-        vm.prank(someone);
+        vm.prank(bob);
         lottery.enter(tokens, ids);
         skip(lottery.drawInterval() + 1);
 
         uint256[] memory tickets = new uint256[](1);
         tickets[0] = 0;
 
-        vm.prank(someone);
+        vm.prank(bob);
         lottery.stack(tickets);
 
         vm.expectRevert(abi.encodeWithSelector(NotTicketOwner.selector, 0));
@@ -398,12 +398,19 @@ contract RealtLotteryTest is Test, ERC721Holder {
         tickets[2] = 2;
         lottery.stack(tickets);
 
-        lottery.requestDraw();
+        vm.deal(address(this), 1 ether);
+        uint256 balanceBefore = address(this).balance;
+        lottery.requestDraw{value: 1 ether}();
+        assertEq(address(this).balance, balanceBefore - 9 ether / 10);
+        skip(lottery.drawInterval() + 1);
+
+        witnet.setDrainAllTheFee(true);
+        lottery.requestDraw{value: address(this).balance}();
+        assertEq(address(this).balance, 0);
+        witnet.setDrainAllTheFee(false);
     }
 
     function testSetInterests() public {
-        address someone = address(0x1);
-
         address[] memory tokens = new address[](1);
         tokens[0] = address(tokenA);
 
@@ -411,15 +418,13 @@ contract RealtLotteryTest is Test, ERC721Holder {
         amount[0] = 1;
 
         vm.expectRevert("Ownable: caller is not the owner");
-        vm.prank(someone);
+        vm.prank(bob);
         lottery.setInterests(tokens, amount);
 
         lottery.setInterests(tokens, amount);
     }
 
     function testAddTokens() public {
-        address someone = address(0x1);
-
         address[] memory tokens = new address[](1);
         tokens[0] = address(tokenA);
 
@@ -427,35 +432,43 @@ contract RealtLotteryTest is Test, ERC721Holder {
         amount[0] = 1;
 
         vm.expectRevert("Ownable: caller is not the owner");
-        vm.prank(someone);
+        vm.prank(bob);
         lottery.addTokens(tokens, amount);
 
         lottery.addTokens(tokens, amount);
     }
 
     function testSetDrawInterval() public {
-        address someone = address(0x1);
-
         vm.expectRevert("Ownable: caller is not the owner");
-        vm.prank(someone);
+        vm.prank(bob);
         lottery.setDrawInterval(1);
 
         lottery.setDrawInterval(1);
         assertEq(lottery.drawInterval(), 1);
     }
 
-    function setRentTokens() public {
-        address someone = address(0x1);
-
+    function testSetRentTokens() public {
         address[] memory tokens = new address[](1);
         tokens[0] = address(tokenA);
 
         vm.expectRevert("Ownable: caller is not the owner");
-        vm.prank(someone);
+        vm.prank(bob);
         lottery.setRentTokens(tokens);
 
         lottery.setRentTokens(tokens);
 
         assertEq(lottery.rentTokens(0), address(tokenA));
     }
+
+    function testEditWitnetContract() public {
+        vm.expectRevert("Ownable: caller is not the owner");
+        vm.prank(bob);
+        lottery.setWitnet(bob);
+
+        lottery.setWitnet(bob);
+        assertEq(address(lottery.witnetRandomness()), bob);
+    }
+
+    /// @notice allows to receive back funds
+    receive() external payable {}
 }

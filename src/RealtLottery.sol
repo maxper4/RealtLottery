@@ -126,7 +126,7 @@ contract RealtLottery is Ownable, ERC721, ERC721Holder {
                 delete tickets[_ids[i]];
 
                 if(ticket.stacked) {
-                     uint256 swapped = tokens[ticket.token].tickets[tokens[ticket.token].tickets.length - 1];
+                    uint256 swapped = tokens[ticket.token].tickets[tokens[ticket.token].tickets.length - 1];
                     tickets[swapped].indexInToken = ticket.indexInToken;
                     tokens[ticket.token].tickets[ticket.indexInToken] = swapped;
                     tokens[ticket.token].tickets.pop();
@@ -157,7 +157,7 @@ contract RealtLottery is Ownable, ERC721, ERC721Holder {
 
         uint256 usedFunds = witnetRandomness.randomize{ value: msg.value }();
         if (usedFunds < msg.value) {
-            payable(msg.sender).transfer(msg.value - usedFunds);
+            payable(msg.sender).call{value: msg.value - usedFunds}("");
         }
     }
 
@@ -247,4 +247,7 @@ contract RealtLottery is Ownable, ERC721, ERC721Holder {
     function setWitnet(address _witnet) external onlyOwner {
         witnetRandomness = IWitnetRandomness(_witnet);
     }
+
+    /// @notice allows to receive back funds
+    receive() external payable {}
 }
