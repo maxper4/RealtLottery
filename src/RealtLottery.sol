@@ -1,15 +1,17 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.19;
+pragma solidity ^0.8.20;
 
-import "openzeppelin/access/Ownable.sol";
-import "openzeppelin/token/ERC721/ERC721.sol";
-import "openzeppelin/token/ERC20/IERC20.sol";
-import "openzeppelin/token/ERC721/utils/ERC721Holder.sol";
+import {Ownable} from "openzeppelin/access/Ownable.sol";
+import {ERC721} from "openzeppelin/token/ERC721/ERC721.sol";
+import {IERC20} from "openzeppelin/token/ERC20/IERC20.sol";
+import {ERC721Holder} from "openzeppelin/token/ERC721/utils/ERC721Holder.sol";
+import {IWitnetRandomness} from "witnet-solidity-bridge/interfaces/IWitnetRandomness.sol";
 
 error DrawTooEarly();
 error TokenNotSupported(address token);
 error TicketNotReady(uint256 ticket);
 error NotTicketOwner(uint256 ticket);
+error NoRandomness();
 
 /// @title RealT Lottery: a lottery where you can win the rent of every staked property
 /// @author maxper
@@ -38,10 +40,13 @@ contract RealtLottery is Ownable, ERC721, ERC721Holder {
 
     address[] public rentTokens;                                        // every token that can be used to pay rent (xDai, USDC, etc..)
 
-    uint256 public nextDrawTimestamp;                                  // when the next draw can be done 
-    uint256 public drawInterval;                                       // minimum delay between two draws
+    uint256 public nextDrawTimestamp;                                   // when the next draw can be done 
+    uint256 public drawInterval;                                        // minimum delay between two draws
+
+    IWitnetRandomness public witnetRandomness;                          // Witnet randomness contract
+    uint256 public witnetRandomnessBlock;                               // block number of the last Witnet randomness request, 0 if the draw was executed
     
-    constructor(address[] memory _tokens, uint256[] memory _interests, address[] memory _rentTokens, uint256 _nextDraw) ERC721("RealtLottery", "RTL") Ownable() {
+    constructor(address[] memory _tokens, uint256[] memory _interests, address[] memory _rentTokens, uint256 _nextDraw, address _witnet) ERC721("RealtLottery", "RTL") Ownable() {
         for (uint256 i = 0; i < _tokens.length; ++i) {
             tokens[_tokens[i]] = Token(_interests[i], new uint256[](0));
             tokensSupported.push(_tokens[i]);
@@ -50,6 +55,8 @@ contract RealtLottery is Ownable, ERC721, ERC721Holder {
         rentTokens = _rentTokens;
         nextDrawTimestamp = _nextDraw;
         drawInterval = 6 days + 12 hours;
+
+        witnetRandomness = IWitnetRandomness(_witnet);
     }
 
     /// @notice Enter the lottery with a list of property tokens
@@ -139,18 +146,33 @@ contract RealtLottery is Ownable, ERC721, ERC721Holder {
         }
     } 
 
-    /// @notice Draw a winner and send him the rent of every stacked property token
-    function draw() external {
+    /// @notice Request randomness to Witnet in order to do a draw
+    function requestDraw() external payable {
         if(block.timestamp < nextDrawTimestamp) {
             revert DrawTooEarly();
         }
 
-        uint256 randomness = uint256(keccak256(abi.encodePacked(block.timestamp, msg.sender))) % interestsCumulated; // TODO: improve randomness
+        witnetRandomnessBlock = block.number;
+        nextDrawTimestamp = block.timestamp + drawInterval;
+
+        uint256 usedFunds = witnetRandomness.randomize{ value: msg.value }();
+        if (usedFunds < msg.value) {
+            payable(msg.sender).transfer(msg.value - usedFunds);
+        }
+    }
+
+    /// @notice Do the draw according to the randomness requested before
+    /// @dev The randomness is used to find a winner among all the tickets, which receive the rent of all properties stacked
+    function doDraw() external {
+        if(witnetRandomnessBlock == 0) {
+            revert NoRandomness();
+        }
+
+        uint256 randomness = uint256(witnetRandomness.getRandomnessAfter(witnetRandomnessBlock)) % interestsCumulated;
+        witnetRandomnessBlock = 0;
 
         uint256 ticketWinner = findRandomNFT(randomness);
         address winner = ownerOf(ticketWinner);
-
-        nextDrawTimestamp = block.timestamp + drawInterval;
 
         for(uint256 i = 0; i < rentTokens.length;) {    // Transfer rent tokens
             uint256 reward = IERC20(rentTokens[i]).balanceOf(address(this));
@@ -218,5 +240,11 @@ contract RealtLottery is Ownable, ERC721, ERC721Holder {
     /// @param _rentTokens The new rent tokens
     function setRentTokens(address[] memory _rentTokens) external onlyOwner {
         rentTokens = _rentTokens;
+    }
+
+    /// @notice update witnet contract
+    /// @param _witnet The new witnet contract
+    function setWitnet(address _witnet) external onlyOwner {
+        witnetRandomness = IWitnetRandomness(_witnet);
     }
 }

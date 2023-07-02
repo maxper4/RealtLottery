@@ -1,19 +1,23 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.13;
+pragma solidity ^0.8.20;
 
 import "forge-std/Test.sol";
-import "./MockNFT.sol";
-import "../src/RealtLottery.sol";
-import "openzeppelin/token/ERC721/utils/ERC721Holder.sol";
+import {MockNFT} from "./Mocks/MockNFT.sol";
+import {MockWitnet} from "./Mocks/MockWitnet.sol";
+import {RealtLottery, NotTicketOwner, TokenNotSupported, TicketNotReady, DrawTooEarly} from "../src/RealtLottery.sol";
+import {ERC721Holder} from "openzeppelin/token/ERC721/utils/ERC721Holder.sol";
 
 contract RealtLotteryTest is Test, ERC721Holder {
     RealtLottery public lottery;
+    MockWitnet public witnet;
     MockNFT public tokenA;
     MockNFT public tokenB;
 
     function setUp() public {
         tokenA = new MockNFT("TOKEN A", "TKA");
         tokenB = new MockNFT("TOKEN B", "TKB");
+
+        witnet = new MockWitnet();
 
         address[] memory tokens = new address[](2);
         tokens[0] = address(tokenA);
@@ -25,7 +29,7 @@ contract RealtLotteryTest is Test, ERC721Holder {
 
         address[] memory rentTokens = new address[](0);
 
-        lottery = new RealtLottery(tokens, interests, rentTokens, block.timestamp - 1);
+        lottery = new RealtLottery(tokens, interests, rentTokens, block.timestamp - 1, address(witnet));
 
         tokenA.setApprovalForAll(address(lottery), true);
         tokenB.setApprovalForAll(address(lottery), true);
@@ -97,13 +101,13 @@ contract RealtLotteryTest is Test, ERC721Holder {
         tickets[0] = 0;
         lottery.stack(tickets);
 
-        lottery.draw();
+        lottery.requestDraw();
 
         assertEq(lottery.nextDrawTimestamp(), block.timestamp + lottery.drawInterval());
 
         // try to draw again
         vm.expectRevert(DrawTooEarly.selector);
-        lottery.draw();
+        lottery.requestDraw();
     }
 
     function testSelectionOfNFTBasedOnRandomness2() public {
@@ -394,7 +398,7 @@ contract RealtLotteryTest is Test, ERC721Holder {
         tickets[2] = 2;
         lottery.stack(tickets);
 
-        lottery.draw();
+        lottery.requestDraw();
     }
 
     function testSetInterests() public {
