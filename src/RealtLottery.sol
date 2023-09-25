@@ -31,7 +31,7 @@ contract RealtLottery is Ownable, ERC721, ERC721Holder {
         uint256[] tickets;
     }
 
-    address[] public tokensSupported;                                   // list of supported property tokens
+    address[] private tokensSupported;                                  // list of supported property tokens
     mapping(address => Token) public tokens;                            // all tokens
 
     mapping(uint256 => Ticket) public tickets;                          // all tickets
@@ -222,6 +222,7 @@ contract RealtLottery is Ownable, ERC721, ERC721Holder {
         return tokens[tokensSupported[tokensSupported.length - 1]].tickets[tokens[tokensSupported[tokensSupported.length - 1]].tickets.length - 1];
     }
 
+    /// @notice Get the prize to be won in the next draw
     function prizeToBeWon() public view returns(uint256) {
         uint256 prize = 0;
         for(uint256 i = 0; i < rentTokens.length;) {
@@ -234,6 +235,11 @@ contract RealtLottery is Ownable, ERC721, ERC721Holder {
         }
 
         return prize;
+    }
+
+    /// @notice Get the list of property tokens supported
+    function getTokensSupported() public view returns(address[] memory) {
+        return tokensSupported;
     }
 
     /// @notice Update the interests of a list of property tokens

@@ -13,7 +13,7 @@ contract Deploy is Script {
         uint256[] memory interests = new uint256[](1);
         interests[0] = 1000000000000000000;
         address[] memory rentTokens = new address[](1);
-        rentTokens[0] = address(0x0);
+        rentTokens[0] = 0x063Fbb248945656898938137A7A048bdCe847327;
         uint256 nextDraw = block.timestamp;         // For debug
         // uint256 nextDraw = block.timestamp + 7 days;  // For production
         address witnet = 0x0123456fbBC59E181D76B6Fe8771953d1953B51a;        // For gnosis testnet
