@@ -17,7 +17,8 @@ error CouldNotRefund();
 /// @author maxper
 /// @notice  Users can enter with a token from RealT, stack it and wait for the next draw
 contract RealtLottery is Ownable, ERC721Enumerable {
-    struct Ticket {                                                     // A ticket is a wrapper around a property token
+    struct Ticket {
+        // A ticket is a wrapper around a property token
         address token;
         uint256 amount;
         uint256 indexInToken;
@@ -25,32 +26,39 @@ contract RealtLottery is Ownable, ERC721Enumerable {
         bool stacked;
     }
 
-    struct Token {                                                      // A token represent a property that generate interests
+    struct Token {
+        // A token represent a property that generate interests
         uint256 interests;
         uint256[] tickets;
-        uint256 interestsCumulated;                                     // sum of interests cumulated for this token
+        uint256 interestsCumulated; // sum of interests cumulated for this token
     }
 
-    address[] private tokensSupported;                                  // list of supported property tokens
-    mapping(address => Token) public tokens;                            // all tokens
+    address[] private tokensSupported; // list of supported property tokens
+    mapping(address => Token) public tokens; // all tokens
 
-    mapping(uint256 => Ticket) public tickets;                          // all tickets
+    mapping(uint256 => Ticket) public tickets; // all tickets
     uint256 public interestsCumulated;
 
-    uint256 private ticketCounter;                                      // counter for ticket ids
+    uint256 private ticketCounter; // counter for ticket ids
 
-    address[] public rentTokens;                                        // every token that can be used to pay rent (xDai, USDC, etc..)
+    address[] public rentTokens; // every token that can be used to pay rent (xDai, USDC, etc..)
 
-    uint256 public nextDrawTimestamp;                                   // when the next draw can be done 
-    uint256 public drawInterval;                                        // minimum delay between two draws
+    uint256 public nextDrawTimestamp; // when the next draw can be done
+    uint256 public drawInterval; // minimum delay between two draws
 
     address public lastWinner;
     uint256 public lastPrize;
 
-    IWitnetRandomness public witnetRandomness;                          // Witnet randomness contract
-    uint256 public witnetRandomnessBlock;                               // block number of the last Witnet randomness request, 0 if the draw was executed
-    
-    constructor(address[] memory _tokens, uint256[] memory _interests, address[] memory _rentTokens, uint256 _nextDraw, address _witnet) ERC721("RealtLottery", "RTL") Ownable() {
+    IWitnetRandomness public witnetRandomness; // Witnet randomness contract
+    uint256 public witnetRandomnessBlock; // block number of the last Witnet randomness request, 0 if the draw was executed
+
+    constructor(
+        address[] memory _tokens,
+        uint256[] memory _interests,
+        address[] memory _rentTokens,
+        uint256 _nextDraw,
+        address _witnet
+    ) ERC721("RealtLottery", "RTL") Ownable() {
         for (uint256 i = 0; i < _tokens.length; ++i) {
             tokens[_tokens[i]] = Token(_interests[i], new uint256[](0), 0);
             tokensSupported.push(_tokens[i]);
@@ -68,16 +76,15 @@ contract RealtLottery is Ownable, ERC721Enumerable {
     /// @param _amounts  Amount of each property token
     function enter(address[] memory _tokens, uint256[] memory _amounts) external {
         for (uint256 i = 0; i < _tokens.length;) {
-            if(tokens[_tokens[i]].interests != 0) {
+            if (tokens[_tokens[i]].interests != 0) {
                 // owner must approve this contract first
-                ERC20(_tokens[i]).transferFrom(msg.sender, address(this), _amounts[i]);  // Take custody of the property token
+                ERC20(_tokens[i]).transferFrom(msg.sender, address(this), _amounts[i]); // Take custody of the property token
 
                 // Mint a ticket to be reedemed later for the property token
                 tickets[ticketCounter] = Ticket(_tokens[i], _amounts[i], 0, block.timestamp, false);
 
                 _safeMint(msg.sender, ticketCounter++);
-            }
-            else {
+            } else {
                 revert TokenNotSupported(_tokens[i]);
             }
 
@@ -92,23 +99,22 @@ contract RealtLottery is Ownable, ERC721Enumerable {
     /// @dev The ticket must have been entered at least one drawInterval ago to avoid abuse (being able to win without having contributed to the rent)
     function stack(uint256[] memory _tickets) external {
         for (uint256 i = 0; i < _tickets.length;) {
-            if(ownerOf(_tickets[i]) == msg.sender) {
+            if (ownerOf(_tickets[i]) == msg.sender) {
                 Ticket memory ticket = tickets[_tickets[i]];
-                if(!ticket.stacked && block.timestamp - ticket.enteredAt >= drawInterval) {
+                if (!ticket.stacked && block.timestamp - ticket.enteredAt >= drawInterval) {
                     ticket.stacked = true;
                     ticket.indexInToken = tokens[ticket.token].tickets.length;
                     tokens[ticket.token].tickets.push(_tickets[i]);
                     tickets[_tickets[i]] = ticket;
 
-                    uint256 interests = tokens[ticket.token].interests * ticket.amount / 10**ERC20(ticket.token).decimals();
+                    uint256 interests =
+                        tokens[ticket.token].interests * ticket.amount / 10 ** ERC20(ticket.token).decimals();
                     tokens[ticket.token].interestsCumulated += interests;
                     interestsCumulated += interests;
-                }
-                else {
+                } else {
                     revert TicketNotReady(_tickets[i]);
                 }
-            }
-            else {
+            } else {
                 revert NotTicketOwner(_tickets[i]);
             }
 
@@ -122,27 +128,27 @@ contract RealtLottery is Ownable, ERC721Enumerable {
     /// @param _ids The list of tickets
     function exit(uint256[] memory _ids) external {
         for (uint256 i = 0; i < _ids.length;) {
-            if(ownerOf(_ids[i]) == msg.sender) {
+            if (ownerOf(_ids[i]) == msg.sender) {
                 Ticket memory ticket = tickets[_ids[i]];
-                
+
                 // remove the ticket
                 _burn(_ids[i]);
                 delete tickets[_ids[i]];
 
-                if(ticket.stacked) {
+                if (ticket.stacked) {
                     uint256 swapped = tokens[ticket.token].tickets[tokens[ticket.token].tickets.length - 1];
                     tickets[swapped].indexInToken = ticket.indexInToken;
                     tokens[ticket.token].tickets[ticket.indexInToken] = swapped;
                     tokens[ticket.token].tickets.pop();
-                    uint256 interests = tokens[ticket.token].interests * ticket.amount / 10**ERC20(ticket.token).decimals();
+                    uint256 interests =
+                        tokens[ticket.token].interests * ticket.amount / 10 ** ERC20(ticket.token).decimals();
                     tokens[ticket.token].interests -= interests;
                     interestsCumulated -= interests;
                 }
 
                 // Send back the property token
                 ERC20(ticket.token).transferFrom(address(this), msg.sender, ticket.amount);
-            }
-            else {
+            } else {
                 revert NotTicketOwner(_ids[i]);
             }
 
@@ -150,21 +156,21 @@ contract RealtLottery is Ownable, ERC721Enumerable {
                 ++i;
             }
         }
-    } 
+    }
 
     /// @notice Request randomness to Witnet in order to do a draw
     function requestDraw() external payable {
-        if(block.timestamp < nextDrawTimestamp) {
+        if (block.timestamp < nextDrawTimestamp) {
             revert DrawTooEarly();
         }
 
         witnetRandomnessBlock = block.number;
         nextDrawTimestamp = block.timestamp + drawInterval;
 
-        uint256 usedFunds = witnetRandomness.randomize{ value: msg.value }();
+        uint256 usedFunds = witnetRandomness.randomize{value: msg.value}();
         if (usedFunds < msg.value) {
-            (bool ok, ) = payable(msg.sender).call{value: msg.value - usedFunds}("");
-            if(!ok) {
+            (bool ok,) = payable(msg.sender).call{value: msg.value - usedFunds}("");
+            if (!ok) {
                 revert CouldNotRefund();
             }
         }
@@ -173,7 +179,7 @@ contract RealtLottery is Ownable, ERC721Enumerable {
     /// @notice Do the draw according to the randomness requested before
     /// @dev The randomness is used to find a winner among all the tickets, which receive the rent of all properties stacked
     function doDraw() external {
-        if(witnetRandomnessBlock == 0) {
+        if (witnetRandomnessBlock == 0) {
             revert NoRandomness();
         }
 
@@ -185,9 +191,10 @@ contract RealtLottery is Ownable, ERC721Enumerable {
 
         uint256 prize = 0;
 
-        for(uint256 i = 0; i < rentTokens.length;) {    // Transfer rent tokens
+        for (uint256 i = 0; i < rentTokens.length;) {
+            // Transfer rent tokens
             uint256 reward = ERC20(rentTokens[i]).balanceOf(address(this));
-            prize += reward * 10**(18 - ERC20(rentTokens[i]).decimals());          // put every token on 18 decimals
+            prize += reward * 10 ** (18 - ERC20(rentTokens[i]).decimals()); // put every token on 18 decimals
 
             ERC20(rentTokens[i]).transferFrom(address(this), winner, reward);
 
@@ -197,9 +204,9 @@ contract RealtLottery is Ownable, ERC721Enumerable {
         }
 
         uint256 rewardsETH = address(this).balance;
-        (bool ok, ) = winner.call{value: rewardsETH}(""); // Transfer xDai, if this fail then the next winner will have a double prize !
+        (bool ok,) = winner.call{value: rewardsETH}(""); // Transfer xDai, if this fail then the next winner will have a double prize !
 
-        if(ok) {
+        if (ok) {
             prize += rewardsETH;
         }
 
@@ -208,29 +215,31 @@ contract RealtLottery is Ownable, ERC721Enumerable {
     }
 
     /// @notice Find the winner according to the randomness
-    function findRandomNFT(uint256 _randomness) public view returns(uint256) {
-        for(uint256 i = 0; i < tokensSupported.length;) {
+    function findRandomNFT(uint256 _randomness) public view returns (uint256) {
+        for (uint256 i = 0; i < tokensSupported.length;) {
             Token memory token = tokens[tokensSupported[i]];
             uint256 maxWeightToken = token.tickets.length * token.interests;
-            if(_randomness < maxWeightToken) {
-                return token.tickets[_randomness /= token.interests];       // TODO update this to take care of differents amounts 
+            if (_randomness < maxWeightToken) {
+                return token.tickets[_randomness /= token.interests]; // TODO update this to take care of differents amounts
             }
 
-            unchecked { // no underflow possible because of the failed if randomness < maxWeightToken
+            unchecked {
+                // no underflow possible because of the failed if randomness < maxWeightToken
                 _randomness -= maxWeightToken;
                 ++i;
             }
         }
 
-        return tokens[tokensSupported[tokensSupported.length - 1]].tickets[tokens[tokensSupported[tokensSupported.length - 1]].tickets.length - 1];
+        return tokens[tokensSupported[tokensSupported.length - 1]].tickets[tokens[tokensSupported[tokensSupported.length
+            - 1]].tickets.length - 1];
     }
 
     /// @notice Get the prize to be won in the next draw
-    function prizeToBeWon() public view returns(uint256) {
+    function prizeToBeWon() public view returns (uint256) {
         uint256 prize = 0;
-        for(uint256 i = 0; i < rentTokens.length;) {
+        for (uint256 i = 0; i < rentTokens.length;) {
             uint256 reward = ERC20(rentTokens[i]).balanceOf(address(this));
-            prize += reward * 10**(18 - ERC20(rentTokens[i]).decimals());          // put every token on 18 decimals
+            prize += reward * 10 ** (18 - ERC20(rentTokens[i]).decimals()); // put every token on 18 decimals
 
             unchecked {
                 ++i;
@@ -241,7 +250,7 @@ contract RealtLottery is Ownable, ERC721Enumerable {
     }
 
     /// @notice Get the list of property tokens supported
-    function getTokensSupported() public view returns(address[] memory) {
+    function getTokensSupported() public view returns (address[] memory) {
         return tokensSupported;
     }
 

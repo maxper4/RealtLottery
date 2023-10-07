@@ -133,7 +133,6 @@ contract RealtLotteryTest is Test, ERC721Holder {
         tickets[1] = 1;
         lottery.stack(tickets);
 
-
         uint256 winner0 = lottery.findRandomNFT(0);
         assertEq(winner0, 0);
 
@@ -176,7 +175,6 @@ contract RealtLotteryTest is Test, ERC721Holder {
         tickets[1] = 1;
         tickets[2] = 2;
         lottery.stack(tickets);
-
 
         uint256 winner0 = lottery.findRandomNFT(0);
         assertEq(winner0, 0);
