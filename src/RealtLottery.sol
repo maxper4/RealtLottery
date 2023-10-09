@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.20;
 
-import {Ownable} from "openzeppelin/access/Ownable.sol";
-import {ERC20} from "openzeppelin/token/ERC20/ERC20.sol";
-import {ERC721Enumerable, ERC721} from "openzeppelin/token/ERC721/extensions/ERC721Enumerable.sol";
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import {ERC721Enumerable, ERC721} from "@openzeppelin/contracts/token/ERC721/extensions/ERC721Enumerable.sol";
 import {IWitnetRandomness} from "witnet-solidity-bridge/interfaces/IWitnetRandomness.sol";
 
 error DrawTooEarly();
@@ -83,7 +83,8 @@ contract RealtLottery is Ownable, ERC721Enumerable {
                 // Mint a ticket to be reedemed later for the property token
                 tickets[ticketCounter] = Ticket(_tokens[i], _amounts[i], 0, block.timestamp, false);
 
-                _safeMint(msg.sender, ticketCounter++);
+                _safeMint(msg.sender, ticketCounter);
+                ticketCounter++;
             } else {
                 revert TokenNotSupported(_tokens[i]);
             }
@@ -108,7 +109,7 @@ contract RealtLottery is Ownable, ERC721Enumerable {
                     tickets[_tickets[i]] = ticket;
 
                     uint256 interests =
-                        tokens[ticket.token].interests * ticket.amount / 10 ** ERC20(ticket.token).decimals();
+                        tokens[ticket.token].interests * ticket.amount ** ERC20(ticket.token).decimals() / 10;
                     tokens[ticket.token].interestsCumulated += interests;
                     interestsCumulated += interests;
                 } else {
@@ -145,8 +146,9 @@ contract RealtLottery is Ownable, ERC721Enumerable {
                     tokens[ticket.token].interests -= interests;
                     interestsCumulated -= interests;
                 }
-
+                
                 // Send back the property token
+                ERC20(ticket.token).approve(address(this), ticket.amount);
                 ERC20(ticket.token).transferFrom(address(this), msg.sender, ticket.amount);
             } else {
                 revert NotTicketOwner(_ids[i]);
