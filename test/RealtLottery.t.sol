@@ -5,19 +5,20 @@ import "forge-std/Test.sol";
 import {MockNFT} from "./Mocks/MockNFT.sol";
 import {MockWitnet} from "./Mocks/MockWitnet.sol";
 import {RealtLottery, NotTicketOwner, TokenNotSupported, TicketNotReady, DrawTooEarly} from "../src/RealtLottery.sol";
-import {ERC721Holder} from "openzeppelin/token/ERC721/utils/ERC721Holder.sol";
+import {ERC721Holder} from "@openzeppelin/contracts/token/ERC721/utils/ERC721Holder.sol";
+import {ERC20Mock} from "@openzeppelin/contracts/mocks/ERC20Mock.sol";
 
 contract RealtLotteryTest is Test, ERC721Holder {
     RealtLottery public lottery;
     MockWitnet public witnet;
-    MockNFT public tokenA;
-    MockNFT public tokenB;
+    ERC20Mock public tokenA;
+    ERC20Mock public tokenB;
 
     address bob = makeAddr("Bob");
 
     function setUp() public {
-        tokenA = new MockNFT("TOKEN A", "TKA");
-        tokenB = new MockNFT("TOKEN B", "TKB");
+        tokenA = new ERC20Mock("TOKEN A", "TKA", address(this), 1);
+        tokenB = new ERC20Mock("TOKEN B", "TKB", address(this), 1);
 
         witnet = new MockWitnet();
 
@@ -33,8 +34,8 @@ contract RealtLotteryTest is Test, ERC721Holder {
 
         lottery = new RealtLottery(tokens, interests, rentTokens, block.timestamp - 1, address(witnet));
 
-        tokenA.setApprovalForAll(address(lottery), true);
-        tokenB.setApprovalForAll(address(lottery), true);
+        tokenA.approve(address(lottery), type(uint256).max);
+        tokenB.approve(address(lottery), type(uint256).max);
     }
 
     function testEnter() public {
@@ -45,35 +46,34 @@ contract RealtLotteryTest is Test, ERC721Holder {
         tokens[0] = address(tokenA);
         tokens[1] = address(tokenB);
 
-        uint256[][] memory ids = new uint256[][](2);
-        uint256[] memory id = new uint256[](1);
-        id[0] = 1;
-        ids[0] = id;
-        ids[1] = id;
+        uint256[] memory amounts = new uint256[](2);
+        amounts[0] = 1;
+        amounts[1] = 1;
 
-        lottery.enter(tokens, ids);
+        lottery.enter(tokens, amounts);
 
-        assertEq(tokenA.ownerOf(1), address(lottery));
-        assertEq(tokenB.ownerOf(1), address(lottery));
-        assertEq(lottery.ownerOf(0), address(this));
-        assertEq(lottery.ownerOf(1), address(this));
+        assertEq(tokenA.balanceOf(address(lottery)), 1);
+        assertEq(tokenB.balanceOf(address(lottery)), 1);
+        assertEq(lottery.owner(), address(this));
     }
 
     function testExit() public {
-        tokenA.mint(address(this), 1);
-        tokenB.mint(address(this), 1);
+        assertEq(tokenA.balanceOf(address(this)), 1);
+        assertEq(tokenB.balanceOf(address(this)), 1);
 
         address[] memory tokens = new address[](2);
         tokens[0] = address(tokenA);
         tokens[1] = address(tokenB);
 
-        uint256[][] memory ids = new uint256[][](2);
-        uint256[] memory id = new uint256[](1);
-        id[0] = 1;
-        ids[0] = id;
-        ids[1] = id;
+        uint256[] memory amounts = new uint256[](2);
+        amounts[0] = 1;
+        amounts[1] = 1;
 
-        lottery.enter(tokens, ids);
+        lottery.enter(tokens, amounts);
+        assertEq(tokenA.balanceOf(address(lottery)), 1);
+        assertEq(tokenB.balanceOf(address(lottery)), 1);
+        assertEq(tokenA.balanceOf(address(this)), 0);
+        assertEq(tokenB.balanceOf(address(this)), 0);
 
         uint256[] memory tickets = new uint256[](2);
         tickets[0] = 0;
@@ -81,8 +81,8 @@ contract RealtLotteryTest is Test, ERC721Holder {
 
         lottery.exit(tickets);
 
-        assertEq(tokenA.ownerOf(1), address(this));
-        assertEq(tokenB.ownerOf(1), address(this));
+        assertEq(tokenA.balanceOf(address(this)), 1);
+        assertEq(tokenB.balanceOf(address(this)), 1);
         assertEq(lottery.balanceOf(address(this)), 0);
         assertEq(lottery.balanceOf(address(lottery)), 0);
     }
@@ -92,12 +92,10 @@ contract RealtLotteryTest is Test, ERC721Holder {
         address[] memory tokens = new address[](1);
         tokens[0] = address(tokenA);
 
-        uint256[][] memory ids = new uint256[][](1);
-        uint256[] memory id = new uint256[](1);
-        id[0] = 1;
-        ids[0] = id;
+        uint256[] memory amounts = new uint256[](1);
+        amounts[0] = 1;
 
-        lottery.enter(tokens, ids);
+        lottery.enter(tokens, amounts);
         skip(lottery.drawInterval() + 1);
         uint256[] memory tickets = new uint256[](1);
         tickets[0] = 0;
@@ -120,19 +118,16 @@ contract RealtLotteryTest is Test, ERC721Holder {
         tokens[0] = address(tokenA);
         tokens[1] = address(tokenB);
 
-        uint256[][] memory ids = new uint256[][](2);
-        uint256[] memory id = new uint256[](1);
-        id[0] = 1;
-        ids[0] = id;
-        ids[1] = id;
+        uint256[] memory amounts = new uint256[](2);
+        amounts[0] = 1;
+        amounts[1] = 1;
 
-        lottery.enter(tokens, ids);
+        lottery.enter(tokens, amounts);
         skip(lottery.drawInterval() + 1);
         uint256[] memory tickets = new uint256[](2);
         tickets[0] = 0;
         tickets[1] = 1;
         lottery.stack(tickets);
-
 
         uint256 winner0 = lottery.findRandomNFT(0);
         assertEq(winner0, 0);
@@ -155,28 +150,25 @@ contract RealtLotteryTest is Test, ERC721Holder {
         tokenA.mint(address(this), 2);
         tokenB.mint(address(this), 1);
 
-        address[] memory tokens = new address[](2);
+        address[] memory tokens = new address[](3);
         tokens[0] = address(tokenA);
-        tokens[1] = address(tokenB);
+        tokens[1] = address(tokenA);
+        tokens[2] = address(tokenB);
 
-        uint256[][] memory ids = new uint256[][](2);
-        uint256[] memory id = new uint256[](2);
-        id[0] = 1;
-        id[1] = 2;
-        uint256[] memory id2 = new uint256[](1);
-        id2[0] = 1;
+        uint256[] memory amounts = new uint256[](3);
+        amounts[0] = 1;
+        amounts[1] = 2;
+        amounts[2] = 1;
+        
+        lottery.enter(tokens, amounts);
 
-        ids[0] = id;
-        ids[1] = id2;
-
-        lottery.enter(tokens, ids);
         skip(lottery.drawInterval() + 1);
         uint256[] memory tickets = new uint256[](3);
         tickets[0] = 0;
         tickets[1] = 1;
         tickets[2] = 2;
+        
         lottery.stack(tickets);
-
 
         uint256 winner0 = lottery.findRandomNFT(0);
         assertEq(winner0, 0);
@@ -208,21 +200,17 @@ contract RealtLotteryTest is Test, ERC721Holder {
         tokenA.mint(address(this), 2);
         tokenB.mint(address(this), 1);
 
-        address[] memory tokens = new address[](2);
+        address[] memory tokens = new address[](3);
         tokens[0] = address(tokenA);
-        tokens[1] = address(tokenB);
+        tokens[1] = address(tokenA);
+        tokens[2] = address(tokenB);
+        
 
-        uint256[][] memory ids = new uint256[][](2);
-        uint256[] memory id = new uint256[](2);
-        id[0] = 1;
-        id[1] = 2;
-        uint256[] memory id2 = new uint256[](1);
-        id2[0] = 1;
-
-        ids[0] = id;
-        ids[1] = id2;
-
-        lottery.enter(tokens, ids);
+        uint256[] memory amounts = new uint256[](3);
+        amounts[0] = 1;
+        amounts[1] = 2;
+        amounts[2] = 1;
+        lottery.enter(tokens, amounts);
         skip(lottery.drawInterval() + 1);
         uint256[] memory tickets = new uint256[](3);
         tickets[0] = 0;
@@ -259,16 +247,11 @@ contract RealtLotteryTest is Test, ERC721Holder {
         tokens[0] = address(tokenA);
         tokens[1] = address(tokenB);
 
-        uint256[][] memory ids = new uint256[][](2);
-        uint256[] memory id = new uint256[](1);
-        id[0] = 1;
-        uint256[] memory id2 = new uint256[](1);
-        id2[0] = 1;
+        uint256[] memory amounts = new uint256[](2);
+        amounts[0] = 1;
+        amounts[1] = 1;
 
-        ids[0] = id;
-        ids[1] = id2;
-
-        lottery.enter(tokens, ids);
+        lottery.enter(tokens, amounts);
         skip(lottery.drawInterval() + 1);
         uint256[] memory tickets = new uint256[](1);
         tickets[0] = 0;
@@ -285,13 +268,10 @@ contract RealtLotteryTest is Test, ERC721Holder {
         address[] memory tokens = new address[](1);
         tokens[0] = address(tokenC);
 
-        uint256[][] memory ids = new uint256[][](1);
-        uint256[] memory id = new uint256[](1);
-        id[0] = 1;
-        ids[0] = id;
-
         vm.expectRevert(abi.encodeWithSelector(TokenNotSupported.selector, address(tokenC)));
-        lottery.enter(tokens, ids);
+        uint256[] memory amounts = new uint256[](1);
+        amounts[0] = 1;
+        lottery.enter(tokens, amounts);
 
         assertEq(lottery.balanceOf(address(this)), 0);
     }
@@ -303,12 +283,10 @@ contract RealtLotteryTest is Test, ERC721Holder {
         address[] memory tokens = new address[](1);
         tokens[0] = address(tokenA);
 
-        uint256[][] memory ids = new uint256[][](1);
-        uint256[] memory id = new uint256[](1);
-        id[0] = 1;
-        ids[0] = id;
+        uint256[] memory amounts = new uint256[](1);
+        amounts[0] = 1;
 
-        lottery.enter(tokens, ids);
+        lottery.enter(tokens, amounts);
         skip(_delay);
 
         uint256[] memory tickets = new uint256[](1);
@@ -326,15 +304,14 @@ contract RealtLotteryTest is Test, ERC721Holder {
         address[] memory tokens = new address[](1);
         tokens[0] = address(tokenA);
 
-        uint256[][] memory ids = new uint256[][](1);
-        uint256[] memory id = new uint256[](1);
-        id[0] = 1;
-        ids[0] = id;
-
         vm.prank(bob);
         tokenA.approve(address(lottery), 1);
         vm.prank(bob);
-        lottery.enter(tokens, ids);
+
+        uint256[] memory amounts = new uint256[](1);
+        amounts[0] = 1;
+        lottery.enter(tokens, amounts);
+
         skip(lottery.drawInterval() + 1);
 
         uint256[] memory tickets = new uint256[](1);
@@ -350,15 +327,14 @@ contract RealtLotteryTest is Test, ERC721Holder {
         address[] memory tokens = new address[](1);
         tokens[0] = address(tokenA);
 
-        uint256[][] memory ids = new uint256[][](1);
-        uint256[] memory id = new uint256[](1);
-        id[0] = 1;
-        ids[0] = id;
-
         vm.prank(bob);
         tokenA.approve(address(lottery), 1);
         vm.prank(bob);
-        lottery.enter(tokens, ids);
+
+        uint256[] memory amounts = new uint256[](1);
+        amounts[0] = 1;
+        lottery.enter(tokens, amounts);
+
         skip(lottery.drawInterval() + 1);
 
         uint256[] memory tickets = new uint256[](1);
@@ -376,21 +352,17 @@ contract RealtLotteryTest is Test, ERC721Holder {
         tokenA.mint(address(this), 2);
         tokenB.mint(address(this), 1);
 
-        address[] memory tokens = new address[](2);
+        address[] memory tokens = new address[](3);
         tokens[0] = address(tokenA);
         tokens[1] = address(tokenB);
+        tokens[2] = address(tokenA);
 
-        uint256[][] memory ids = new uint256[][](2);
-        uint256[] memory id = new uint256[](2);
-        id[0] = 1;
-        id[1] = 2;
-        uint256[] memory id2 = new uint256[](1);
-        id2[0] = 1;
+        uint256[] memory amounts = new uint256[](3);
+        amounts[0] = 1;
+        amounts[1] = 2;
+        amounts[2] = 1;
+        lottery.enter(tokens, amounts);
 
-        ids[0] = id;
-        ids[1] = id2;
-
-        lottery.enter(tokens, ids);
         skip(lottery.drawInterval() + 1);
         uint256[] memory tickets = new uint256[](3);
         tickets[0] = 0;
@@ -401,12 +373,12 @@ contract RealtLotteryTest is Test, ERC721Holder {
         vm.deal(address(this), 1 ether);
         uint256 balanceBefore = address(this).balance;
         lottery.requestDraw{value: 1 ether}();
-        assertEq(address(this).balance, balanceBefore - 9 ether / 10);
+        assertEq(address(this).balance, balanceBefore - (9 ether / 10));
         skip(lottery.drawInterval() + 1);
 
         witnet.setDrainAllTheFee(true);
         lottery.requestDraw{value: address(this).balance}();
-        assertEq(address(this).balance, 0);
+        assertEq(address(this).balance, 0.1 ether);
         witnet.setDrainAllTheFee(false);
     }
 
