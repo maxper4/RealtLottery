@@ -83,8 +83,7 @@ contract RealtLottery is Ownable, ERC721Enumerable {
                 // Mint a ticket to be reedemed later for the property token
                 tickets[ticketCounter] = Ticket(_tokens[i], _amounts[i], 0, block.timestamp, false);
 
-                _safeMint(msg.sender, ticketCounter);
-                ticketCounter++;
+                _safeMint(msg.sender, ticketCounter++);
             } else {
                 revert TokenNotSupported(_tokens[i]);
             }
@@ -109,7 +108,7 @@ contract RealtLottery is Ownable, ERC721Enumerable {
                     tickets[_tickets[i]] = ticket;
 
                     uint256 interests =
-                        tokens[ticket.token].interests * ticket.amount ** ERC20(ticket.token).decimals() / 10;
+                        tokens[ticket.token].interests * ticket.amount / 10 ** ERC20(ticket.token).decimals();
                     tokens[ticket.token].interestsCumulated += interests;
                     interestsCumulated += interests;
                 } else {
@@ -148,8 +147,7 @@ contract RealtLottery is Ownable, ERC721Enumerable {
                 }
                 
                 // Send back the property token
-                ERC20(ticket.token).approve(address(this), ticket.amount);
-                ERC20(ticket.token).transferFrom(address(this), msg.sender, ticket.amount);
+                ERC20(ticket.token).transfer(msg.sender, ticket.amount);
             } else {
                 revert NotTicketOwner(_ids[i]);
             }
