@@ -17,13 +17,18 @@ error CouldNotRefund();
 /// @author maxper
 /// @notice  Users can enter with a token from RealT, stack it and wait for the next draw
 contract RealtLottery is Ownable, ERC721Enumerable {
-    struct Ticket {
-        // A ticket is a wrapper around a property token
+    struct Ticket {             // A ticket is a wrapper around a property token
         address token;
         uint256 amount;
         uint256 indexInToken;
         uint256 enteredAt;
         bool stacked;
+        TierTicket[] tiers;
+    }
+
+    struct TierTicket {
+        uint256 tier;
+        uint256 indexInTicket;
     }
 
     struct Token {
@@ -38,6 +43,9 @@ contract RealtLottery is Ownable, ERC721Enumerable {
 
     mapping(uint256 => Ticket) public tickets; // all tickets
     uint256 public interestsCumulated;
+
+    mapping(address => mapping(uint256 => uint256[])) public buckets; // buckets of tickets for each tier and for each token
+    mapping(address => uint256) public greatestTier;        // maximum tier
 
     uint256 private ticketCounter; // counter for ticket ids
 
@@ -81,7 +89,9 @@ contract RealtLottery is Ownable, ERC721Enumerable {
                 ERC20(_tokens[i]).transferFrom(msg.sender, address(this), _amounts[i]); // Take custody of the property token
 
                 // Mint a ticket to be reedemed later for the property token
-                tickets[ticketCounter] = Ticket(_tokens[i], _amounts[i], 0, block.timestamp, false);
+                tickets[ticketCounter].token = _tokens[i];
+                tickets[ticketCounter].amount = _amounts[i];
+                tickets[ticketCounter].enteredAt = block.timestamp;                
 
                 _safeMint(msg.sender, ticketCounter++);
             } else {
@@ -100,17 +110,30 @@ contract RealtLottery is Ownable, ERC721Enumerable {
     function stack(uint256[] memory _tickets) external {
         for (uint256 i = 0; i < _tickets.length;) {
             if (ownerOf(_tickets[i]) == msg.sender) {
-                Ticket memory ticket = tickets[_tickets[i]];
+                Ticket storage ticket = tickets[_tickets[i]];
                 if (!ticket.stacked && block.timestamp - ticket.enteredAt >= drawInterval) {
                     ticket.stacked = true;
                     ticket.indexInToken = tokens[ticket.token].tickets.length;
                     tokens[ticket.token].tickets.push(_tickets[i]);
-                    tickets[_tickets[i]] = ticket;
 
                     uint256 interests =
                         tokens[ticket.token].interests * ticket.amount / 10 ** ERC20(ticket.token).decimals();
                     tokens[ticket.token].interestsCumulated += interests;
                     interestsCumulated += interests;
+
+                    uint256 bucket = 1;
+                    while (bucket <= ticket.amount) {           // binary decomposition of the ticket amount
+                        if (bucket & ticket.amount != 0) {
+                            buckets[ticket.token][bucket].push(_tickets[i]);
+                            ticket.tiers.push(TierTicket(i, buckets[ticket.token][bucket].length - 1));
+                        }
+
+                        bucket <<= 1;
+                    }
+
+                    if (greatestTier[ticket.token] < bucket) {
+                        greatestTier[ticket.token] = bucket;
+                    }
                 } else {
                     revert TicketNotReady(_tickets[i]);
                 }
@@ -144,6 +167,11 @@ contract RealtLottery is Ownable, ERC721Enumerable {
                         tokens[ticket.token].interests * ticket.amount / 10 ** ERC20(ticket.token).decimals();
                     tokens[ticket.token].interests -= interests;
                     interestsCumulated -= interests;
+
+                    for(uint256 t = 0; t < ticket.tiers.length; ++t){
+                        buckets[ticket.token][ticket.tiers[t].tier][ticket.tiers[t].indexInTicket] = buckets[ticket.token][ticket.tiers[t].tier][buckets[ticket.token][ticket.tiers[t].tier].length - 1];
+                        buckets[ticket.token][ticket.tiers[t].tier].pop();
+                    }
                 }
                 
                 // Send back the property token
@@ -219,8 +247,17 @@ contract RealtLottery is Ownable, ERC721Enumerable {
         for (uint256 i = 0; i < tokensSupported.length;) {
             Token memory token = tokens[tokensSupported[i]];
             uint256 maxWeightToken = token.tickets.length * token.interests;
-            if (_randomness < maxWeightToken) {
-                return token.tickets[_randomness /= token.interests]; // TODO update this to take care of differents amounts
+            if (_randomness < maxWeightToken) { // the winner is in this token
+                for (uint256 tier = greatestTier[tokensSupported[i]]; tier > 0; --tier) {
+                    uint256 sumBucket = buckets[tokensSupported[i]][tier].length * tier;
+                    if (_randomness < sumBucket) {
+                        return buckets[tokensSupported[i]][tier][_randomness / tier];
+                    } else {
+                        _randomness -= sumBucket;
+                    }
+                }
+
+                return buckets[tokensSupported[i]][greatestTier[tokensSupported[i]]][buckets[tokensSupported[i]][greatestTier[tokensSupported[i]]].length - 1];
             }
 
             unchecked {
