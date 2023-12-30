@@ -29,7 +29,7 @@ contract MockWitnet is IWitnetRandomness {
     }
 
     function getRandomnessAfter(uint256 /*_block*/) external view returns (bytes32) {
-        return bytes32(abi.encodePacked(randomness));
+        return bytes32(abi.encode(randomness));
     }
 
     function getRandomnessNextBlock(uint256 /*_block*/) external view returns (uint256) {

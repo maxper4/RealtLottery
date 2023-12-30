@@ -117,15 +117,15 @@ contract RealtLottery is Ownable, ERC721Enumerable {
                     tokens[ticket.token].tickets.push(_tickets[i]);
 
                     uint256 interests =
-                        tokens[ticket.token].interests * ticket.amount / 10 ** ERC20(ticket.token).decimals();
+                        tokens[ticket.token].interests * ticket.amount * 10 ** (18-ERC20(ticket.token).decimals());
                     tokens[ticket.token].interestsCumulated += interests;
                     interestsCumulated += interests;
 
                     uint256 bucket = 1;
                     while (bucket <= ticket.amount) {           // binary decomposition of the ticket amount
                         if (bucket & ticket.amount != 0) {
+                            ticket.tiers.push(TierTicket(bucket, buckets[ticket.token][bucket].length));
                             buckets[ticket.token][bucket].push(_tickets[i]);
-                            ticket.tiers.push(TierTicket(i, buckets[ticket.token][bucket].length - 1));
                         }
 
                         bucket <<= 1;
@@ -164,8 +164,8 @@ contract RealtLottery is Ownable, ERC721Enumerable {
                     tokens[ticket.token].tickets[ticket.indexInToken] = swapped;
                     tokens[ticket.token].tickets.pop();
                     uint256 interests =
-                        tokens[ticket.token].interests * ticket.amount / 10 ** ERC20(ticket.token).decimals();
-                    tokens[ticket.token].interests -= interests;
+                        tokens[ticket.token].interests * ticket.amount * 10 ** (18-ERC20(ticket.token).decimals());
+                    tokens[ticket.token].interestsCumulated -= interests;
                     interestsCumulated -= interests;
 
                     for(uint256 t = 0; t < ticket.tiers.length; ++t){
@@ -211,7 +211,7 @@ contract RealtLottery is Ownable, ERC721Enumerable {
             revert NoRandomness();
         }
 
-        uint256 randomness = uint256(witnetRandomness.getRandomnessAfter(witnetRandomnessBlock)) % interestsCumulated;
+        uint256 randomness = witnetRandomness.random(uint32(interestsCumulated), 0, witnetRandomnessBlock);
         witnetRandomnessBlock = 0;
 
         uint256 ticketWinner = findRandomNFT(randomness);
@@ -246,23 +246,27 @@ contract RealtLottery is Ownable, ERC721Enumerable {
     function findRandomNFT(uint256 _randomness) public view returns (uint256) {
         for (uint256 i = 0; i < tokensSupported.length;) {
             Token memory token = tokens[tokensSupported[i]];
-            uint256 maxWeightToken = token.tickets.length * token.interests;
-            if (_randomness < maxWeightToken) { // the winner is in this token
+            
+            if (_randomness < token.interestsCumulated) { // the winner is in this token
                 for (uint256 tier = greatestTier[tokensSupported[i]]; tier > 0; --tier) {
                     uint256 sumBucket = buckets[tokensSupported[i]][tier].length * tier;
+
                     if (_randomness < sumBucket) {
                         return buckets[tokensSupported[i]][tier][_randomness / tier];
                     } else {
-                        _randomness -= sumBucket;
+                        // no underflow possible because of the failed if randomness < sumBucket
+                        unchecked {
+                            _randomness -= sumBucket;
+                        }
                     }
                 }
 
-                return buckets[tokensSupported[i]][greatestTier[tokensSupported[i]]][buckets[tokensSupported[i]][greatestTier[tokensSupported[i]]].length - 1];
+                return tokens[tokensSupported[i]].tickets[tokens[tokensSupported[i]].tickets.length - 1];
             }
 
             unchecked {
                 // no underflow possible because of the failed if randomness < maxWeightToken
-                _randomness -= maxWeightToken;
+                _randomness -= token.interestsCumulated;
                 ++i;
             }
         }
