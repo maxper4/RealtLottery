@@ -55,7 +55,7 @@ contract RealtLottery is Ownable, ERC721Enumerable {
     uint256 public drawInterval; // minimum delay between two draws
 
     address public lastWinner;
-    uint256 public lastPrize;
+    uint256[] public lastPrize;
 
     IWitnetRandomness public witnetRandomness; // Witnet randomness contract
     uint256 public witnetRandomnessBlock; // block number of the last Witnet randomness request, 0 if the draw was executed
@@ -217,12 +217,11 @@ contract RealtLottery is Ownable, ERC721Enumerable {
         uint256 ticketWinner = findRandomNFT(randomness);
         address winner = ownerOf(ticketWinner);
 
-        uint256 prize = 0;
+        uint256[] memory prize = prizeToBeWon();
 
         for (uint256 i = 0; i < rentTokens.length;) {
             // Transfer rent tokens
             uint256 reward = ERC20(rentTokens[i]).balanceOf(address(this));
-            prize += reward * 10 ** (18 - ERC20(rentTokens[i]).decimals()); // put every token on 18 decimals
 
             ERC20(rentTokens[i]).transferFrom(address(this), winner, reward);
 
@@ -234,8 +233,8 @@ contract RealtLottery is Ownable, ERC721Enumerable {
         uint256 rewardsETH = address(this).balance;
         (bool ok,) = winner.call{value: rewardsETH}(""); // Transfer xDai, if this fail then the next winner will have a double prize !
 
-        if (ok) {
-            prize += rewardsETH;
+        if (!ok) {
+            prize[0] = 0;
         }
 
         lastWinner = winner;
@@ -276,11 +275,13 @@ contract RealtLottery is Ownable, ERC721Enumerable {
     }
 
     /// @notice Get the prize to be won in the next draw
-    function prizeToBeWon() public view returns (uint256) {
-        uint256 prize = 0;
+    function prizeToBeWon() public view returns (uint256[] memory) {
+        uint256[] memory prize = new uint256[](rentTokens.length + 1);
+        prize[0] = address(this).balance;
+
         for (uint256 i = 0; i < rentTokens.length;) {
             uint256 reward = ERC20(rentTokens[i]).balanceOf(address(this));
-            prize += reward * 10 ** (18 - ERC20(rentTokens[i]).decimals()); // put every token on 18 decimals
+            prize[i + 1] = reward * 10 ** (18 - ERC20(rentTokens[i]).decimals()); // put every token on 18 decimals
 
             unchecked {
                 ++i;

@@ -3,7 +3,7 @@ pragma solidity ^0.8.20;
 
 import "forge-std/Test.sol";
 import {MockWitnet} from "./Mocks/MockWitnet.sol";
-import {RealtLottery, NotTicketOwner, TokenNotSupported, TicketNotReady, DrawTooEarly} from "../src/RealtLottery.sol";
+import {RealtLottery, NotTicketOwner, TokenNotSupported, TicketNotReady, DrawTooEarly, NoRandomness} from "../src/RealtLottery.sol";
 import {ERC721Holder} from "@openzeppelin/contracts/token/ERC721/utils/ERC721Holder.sol";
 import {ERC20Mock} from "@openzeppelin/contracts/mocks/ERC20Mock.sol";
 
@@ -457,6 +457,34 @@ contract RealtLotteryTest is Test, ERC721Holder {
 
         lottery.setWitnet(bob);
         assertEq(address(lottery.witnetRandomness()), bob);
+    }
+
+    function testCannotDrawWithoutRandomness() public {
+        vm.expectRevert(NoRandomness.selector);
+        lottery.doDraw();
+    }
+
+    function testPrizeToBeWon() public {
+        rentTokenA.mint(address(lottery), 12382);
+        rentTokenB.mint(address(lottery), 112398);
+        vm.deal(address(lottery), 37 ether);
+
+        uint256[] memory prize = lottery.prizeToBeWon();
+
+        assertEq(prize.length, 3);
+        assertEq(prize[0], 37 ether);
+        assertEq(prize[1], 12382);
+        assertEq(prize[2], 112398);
+        assertEq(prize[0], address(lottery).balance);
+        assertEq(prize[1], rentTokenA.balanceOf(address(lottery)));
+        assertEq(prize[2], rentTokenB.balanceOf(address(lottery)));
+    }
+
+    function testSupportedToken() public {
+        address[] memory tokens = lottery.getTokensSupported();
+        assertEq(tokens.length, 2);
+        assertEq(tokens[0], address(tokenA));
+        assertEq(tokens[1], address(tokenB));
     }
 
     /// @notice allows to receive back funds
